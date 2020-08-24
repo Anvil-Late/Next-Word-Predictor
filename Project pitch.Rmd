@@ -1,0 +1,276 @@
+---
+title: "Next Word Predictor"
+author: "Anvil"
+date: "24/08/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+```
+
+# Summary
+
+This project will use machine learning and natural language processing to build a "next word" predictive model such as the ones we have on our smartphones keyboards. For that, we use a database provided by SwiftKey. Our whole research will be made on R.
+
+# Loading packages
+
+This project will use the following packages ; if you want to reproduce this research, make sure to download them :
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(e1071)
+library(quanteda)
+library(markovchain)
+```
+
+# Loading the data
+
+As a personal habit, I automate the download, unzipping and loading process to make the project reproducible. This chapter will create a "data" folder in your current working directory and download SwiftKey's training dataset there.
+
+```{r}
+if (!file.exists("data")) {
+   dir.create("data")
+}
+urlfile <- "https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"
+filename <- "./data/swiftkey_db.zip"
+
+if (!file.exists(filename)) {
+   download.file(urlfile, filename, method = "curl")
+}
+
+dataset.name <- "final"
+if (!file.exists(dataset.name)) {
+   unzip(filename)
+}
+```
+
+The unzipped folder contains blog, news and twitter text for 4 different languages : english, german, finnish and russian. That's a total of 12 datasets, all collected by a web crawler, and we will only focus on the english ones.
+
+```{r, cache=T}
+
+blogcon <- file("./final/en_US/en_US.blogs.txt", "r") 
+blogtext <- readLines(blogcon, encoding = "UTF-8") 
+
+newscon <- file("./final/en_US/en_US.news.txt", "r") 
+newstext <- readLines(newscon, encoding = "UTF-8") 
+
+twitcon <- file("./final/en_US/en_US.twitter.txt", "r") 
+twittext <- readLines(twitcon, encoding = "UTF-8") 
+
+close(blogcon)
+close(newscon)
+close(twitcon)
+
+```
+
+# A bit of exploratory data analysis and pre-processing
+
+When dealing with our case of text analytics, pre-processing and exploration will be tightly linked. We will often need to do some processing in order to explore the data. 
+
+Moreover, we want as little bias as possible in our model, so we will split our datasets into a training and testing set as soon as possible and do the exploration only on the training set.
+
+## Structure
+
+Now that the text files are open, we might want to take a look at the content, starting at the datasets' sizes :
+
+```{r, cache=T}
+data.frame(
+   Object = c("Blog dataset", "News dataset", "Twitter dataset"),
+   Nr.of.elements = sapply(list(blogtext, newstext, twittext), length),
+   length.longest.element = c(
+      max(sapply(blogtext, nchar)),
+      max(sapply(newstext, nchar)),
+      max(sapply(twittext, nchar))
+   ),
+   dataset.size = sapply(list(blogtext, newstext, twittext), object.size)
+)
+```
+
+We have extremely large datasets, taking a total of more than 600MB of memory. While the twitter datasets only has small entries with a maximum of 140 characters, it has more that 2 millions of them. The blog dataset, on the contrary, has large elements, the biggest one having more than 40 thousand characters, while still having close to a million entries.
+
+Considering the sizes of the datasets, we might not want to use 100% of the available data in our model building. This is good, it means that we can be selective in our filtering and pre-processing and still end up with a large enough database to build an efficient model.
+
+We'll start by building a train set and a test set. For each set, we concatenate 10 000 lines from each of the three sources.
+
+```{r, cache=T}
+blogcon <- file("./final/en_US/en_US.blogs.txt", "r")
+newscon <- file("./final/en_US/en_US.news.txt", "r") 
+twitcon <- file("./final/en_US/en_US.twitter.txt", "r") 
+
+blogtrain <- readLines(blogcon, encoding = "UTF-8", 10000) 
+blogtest <- readLines(blogcon, encoding = "UTF-8", 10000)
+
+newstrain <- readLines(newscon, encoding = "UTF-8", 10000) 
+newstest <- readLines(newscon, encoding = "UTF-8", 10000) 
+
+twittrain <- readLines(twitcon, encoding = "UTF-8", 10000) 
+twittest <- readLines(twitcon, encoding = "UTF-8", 10000)
+
+training <- c(blogtrain, newstrain, twittrain)
+testing <- c(blogtest, newstest, twittest)
+
+close(blogcon)
+close(newscon)
+close(twitcon)
+
+```
+
+## What's next ?
+
+Now that we have datasets to work on, we'll manipulate them a little. The following steps have one aim : to create a frequency matrix, which displays the frequency with which every word is used. With that, we'll know on what our model can be built on. 
+
+For instance, if we find out that we can cover 90% of texts with only a small subset of words, we can greatly reduce the complexity of our model by having a high accuracy on these words and an average one on the others.
+
+## Tokenization
+
+The first thing we will do with our training set is tokenization : we will split our lines of text into chunks of words. For instance, we want the sentence "This watch is Mike's" to become ["this" "watch" "is" "mike" "s"].
+
+This is where the package quanteda comes in ; it can automate this process with its tokens() function. We will set the following parameters :
+
+- Do not tokenize numbers
+- Do not tokenize punctuation
+- Do not tokenize symbols such as dollar signs or hashtags
+- Split hyphenated words
+
+```{r, cache=T}
+train_tokens <- tokens(training, what = "word", remove_numbers = T,
+                       remove_punct = T, remove_symbols = T, split_hyphens = T)
+```
+
+
+Let's check how that changed one of our lines :
+
+```{r}
+training[1]
+train_tokens[[1]]
+```
+
+Finally, to get the full transformation we wanted, we convert all of the tokens to lower case :
+
+```{r, cache=T}
+train_tokens <- tokens_tolower(train_tokens)
+```
+
+
+## Token processing
+
+### Stopwords
+
+In every language, some words are here for grammatical purposes and are not the ones that carry the message of the sentence. These words are called stopwords, and their presence can confuse our predictive model, so we'll filter them out.
+
+An example of a stopword in the english language is "the". Here's a sample of the built-in list of stopwords provided by the quanteda package
+
+```{r}
+stopwords(language = "en")[1:10]
+```
+
+We'll use that to filter them out in our dataset :
+
+```{r, cache=T}
+train_tokens <- tokens_select(train_tokens, stopwords(), selection = "remove")
+```
+
+Let's take the first element and see how it has changed now :
+
+```{r}
+train_tokens[[1]]
+```
+
+### Profanity filtering
+
+We'll get a bit politically correct here, and prevent our model from both taking profanities into account and suggesting them as predictions. Since we use a tweeter database we're bound to encounter some otherwise.
+
+There's a public list of profanities available [here]() for webmasters or moderators to use, and this is what we'll use here to filter them out.
+
+```{r, cache=T}
+# Getting the list
+profanities <- read.csv("https://www.frontgatemedia.com/new/wp-content/uploads/2014/03/Terms-to-Block.csv", header = F, sep = ",", skip = 4)
+profanities[, 2] <- gsub(pattern = ",", replacement = "", profanities[, 2])
+profanities <- profanities[, 2]
+
+# Filtering
+
+train_tokens <- tokens_select(train_tokens, profanities, selection = "remove")
+```
+
+### Stemming the words
+
+The next processing we'll do is stemming, which takes similar words and collapses them all into one generalized word.
+
+For example, if we take the words "run running cat", run and running have the same idea behind them, and cat has nothing to do with run and running. Stemming will collapse these two words into one that describes the "family" :
+
+```{r}
+temp <- c("run running cat")
+temp <- tokens_wordstem(tokens(temp), language = "english")
+temp[[1]]
+```
+
+And that's exactly chat we do on our dataset :
+
+```{r}
+train_tokens <- tokens_wordstem(train_tokens, language = "english")
+```
+
+
+## Frequency matrix
+
+We can now create our frequency matrix - or document feature matrix (DFM). Since our dataset has had quite some steps of pre-processing, we do not need a lot of parameters when creating it.
+
+```{r, cache=T}
+traindfm <- dfm(train_tokens, tolower = F)
+```
+
+We can now see the most frequent words in our dataset :
+
+```{r}
+frequencylist <- textstat_frequency(traindfm)
+head(frequencylist)
+top50 <- filter(frequencylist, rank <= 50)
+qplot(reorder(feature, rank), frequency, data = top50) + 
+   labs(x = "Word", y = "Frequency") + ggtitle("Most frequent words (top 50)") +
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+         plot.title = element_text(hjust = 0.5))
+```
+
+
+
+Now that we saw the top 50 words, let's see a more detailed breakdown of the frequencies in our dataset :
+
+```{r}
+quantile(frequencylist$frequency)
+```
+
+75% of the words in our dataset appear 5 times or less. Let's see the proportion of the data made of words with a frequency of 100 or more :
+
+```{r}
+sum(frequencylist$frequency >=100)
+```
+Words with a frequency of 100 or more are in row 1 to 991. Let's make a subset of only these row, and see the proportion of total occurences these words represent :
+
+```{r}
+sum(frequencylist$frequency[1:991]) / sum(frequencylist$frequency)
+```
+With only these 991 words, we can recreate almost 60% of the whole dataset. That's not quite enough, we'd like to be close to 75%. Let's try again with a minimal frequency of 40 :
+
+```{r}
+sum(frequencylist$frequency >=40)
+sum(frequencylist$frequency[1:2115]) / sum(frequencylist$frequency)
+```
+
+Now we're at 75%, with only 2,115 words out of the total of 33444 words of our dataset. That means that with only 6% of the words we can recreate 75% of the source documents.
+
+# Final pre-processing
+
+What we will now do is save these 2,115 words and only keep those in our original tokenized train frame, the resulting subset is the one we will build our predictive model on.
+
+```{r}
+keeplist <- frequencylist$feature[1:2115]
+model_tokens <- tokens_select(train_tokens, keeplist, selection = "keep")
+```
+
+## Building n-grams
+
+Our training dataset only consists 
