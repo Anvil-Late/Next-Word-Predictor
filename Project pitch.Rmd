@@ -24,6 +24,8 @@ library(caret)
 library(e1071)
 library(quanteda)
 library(markovchain)
+library(knitr) # Md document aesthetics
+library(kableExtra) # Md document aesthetics
 ```
 
 # Loading the data
@@ -77,7 +79,7 @@ Moreover, we want as little bias as possible in our model, so we will split our 
 Now that the text files are open, we might want to take a look at the content, starting at the datasets' sizes :
 
 ```{r, cache=T}
-data.frame(
+summarydf <- data.frame(
    Object = c("Blog dataset", "News dataset", "Twitter dataset"),
    Nr.of.elements = sapply(list(blogtext, newstext, twittext), length),
    length.longest.element = c(
@@ -87,6 +89,8 @@ data.frame(
    ),
    dataset.size = sapply(list(blogtext, newstext, twittext), object.size)
 )
+
+kable(summarydf) %>% kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
 We have extremely large datasets, taking a total of more than 600MB of memory. While the twitter datasets only has small entries with a maximum of 140 characters, it has more that 2 millions of them. The blog dataset, on the contrary, has large elements, the biggest one having more than 40 thousand characters, while still having close to a million entries.
@@ -183,11 +187,13 @@ train_tokens[[1]]
 
 We'll get a bit politically correct here, and prevent our model from both taking profanities into account and suggesting them as predictions. Since we use a tweeter database we're bound to encounter some otherwise.
 
-There's a public list of profanities available [here]() for webmasters or moderators to use, and this is what we'll use here to filter them out.
+There's a public list of profanities available [here](https://www.frontgatemedia.com/a-list-of-723-bad-words-to-blacklist-and-how-to-use-facebooks-moderation-tool/) for webmasters or moderators to use, and this is what we'll use here to filter them out.
 
 ```{r, cache=T}
 # Getting the list
-profanities <- read.csv("https://www.frontgatemedia.com/new/wp-content/uploads/2014/03/Terms-to-Block.csv", header = F, sep = ",", skip = 4)
+profanities <- read.csv(
+   "https://www.frontgatemedia.com/new/wp-content/uploads/2014/03/Terms-to-Block.csv", 
+                        header = F, sep = ",", skip = 4)
 profanities[, 2] <- gsub(pattern = ",", replacement = "", profanities[, 2])
 profanities <- profanities[, 2]
 
@@ -196,23 +202,7 @@ profanities <- profanities[, 2]
 train_tokens <- tokens_select(train_tokens, profanities, selection = "remove")
 ```
 
-### Stemming the words
 
-The next processing we'll do is stemming, which takes similar words and collapses them all into one generalized word.
-
-For example, if we take the words "run running cat", run and running have the same idea behind them, and cat has nothing to do with run and running. Stemming will collapse these two words into one that describes the "family" :
-
-```{r}
-temp <- c("run running cat")
-temp <- tokens_wordstem(tokens(temp), language = "english")
-temp[[1]]
-```
-
-And that's exactly chat we do on our dataset :
-
-```{r}
-train_tokens <- tokens_wordstem(train_tokens, language = "english")
-```
 
 
 ## Frequency matrix
@@ -243,7 +233,7 @@ Now that we saw the top 50 words, let's see a more detailed breakdown of the fre
 quantile(frequencylist$frequency)
 ```
 
-75% of the words in our dataset appear 5 times or less. Let's see the proportion of the data made of words with a frequency of 100 or more :
+75% of the words in our dataset appear 4 times or less. Let's see the proportion of the data made of words with a frequency of 100 or more :
 
 ```{r}
 sum(frequencylist$frequency >=100)
@@ -251,26 +241,72 @@ sum(frequencylist$frequency >=100)
 Words with a frequency of 100 or more are in row 1 to 991. Let's make a subset of only these row, and see the proportion of total occurences these words represent :
 
 ```{r}
-sum(frequencylist$frequency[1:991]) / sum(frequencylist$frequency)
+sum(frequencylist$frequency[1:811]) / sum(frequencylist$frequency)
 ```
-With only these 991 words, we can recreate almost 60% of the whole dataset. That's not quite enough, we'd like to be close to 75%. Let's try again with a minimal frequency of 40 :
+With only these 811 words, we can recreate almost 45% of the whole dataset. That's not quite enough, we'd like to be close to 75% :
 
 ```{r}
-sum(frequencylist$frequency >=40)
-sum(frequencylist$frequency[1:2115]) / sum(frequencylist$frequency)
+sum(frequencylist$frequency >=17)
+sum(frequencylist$frequency[1:4515]) / sum(frequencylist$frequency)
 ```
 
-Now we're at 75%, with only 2,115 words out of the total of 33444 words of our dataset. That means that with only 6% of the words we can recreate 75% of the source documents.
+Now we're at 75%, with only 4,515 words out of the total of 33444 words of our dataset. That means that with only 13% of the words we can recreate 75% of the source documents.
 
 # Final pre-processing
 
 What we will now do is save these 2,115 words and only keep those in our original tokenized train frame, the resulting subset is the one we will build our predictive model on.
 
 ```{r}
-keeplist <- frequencylist$feature[1:2115]
+keeplist <- frequencylist$feature[1:4515]
 model_tokens <- tokens_select(train_tokens, keeplist, selection = "keep")
 ```
 
-## Building n-grams
 
-Our training dataset only consists 
+# Markov Chains and N-Grams
+
+What we plan on doing here is to build a predictive model using Markov Chains, which will interpret text as a "current state", with a probability of having a next word as the "next state". 
+
+For example, when looking at the sentence "the dog chases after the fat cat", each word has a probability of leading to the next :
+
+![](./data/img/1markov.PNG)
+
+The word "the" has a 50% chance of leading to "dog" and 50% chance of leading to "fat", while the other words only have one result with a probability of 100%. 
+
+This is how our model will train on the text we have. However, we can already see the limitations of this method : each word will have many results and if we do not take the previous one into account, we'll have a high chance of predicting gibberish. This is why the "current state" has to be a result of several words. If we do that on the same example :
+
+![](./data/img/2markov.PNG)
+
+Here what is taken into account are pairs of words, which are called digrams. While "The" still has 2 possible results, the state "After The" only has one resulting outcome, "Fat". 
+
+Therefore, what we will now do is take our tokens list and make it into 2-grams and 3-grams token lists, only keep as subset of combinations that appear at least 3 times, and build three models combined into one in the following way :
+
+- If the user enters 3 words, the model built on 3-grams will be called
+- If the user enters 2 words or if the 3-grams prediction fails, the model built on 2-grams will be called
+- If the user only enters 1 word or if the other models fail, the model built on 1-grams will be called.
+
+# Building n-grams
+
+### Building the 2-grams token list 
+
+```{r, cache=T}
+train_tokens_2G <- tokens_ngrams(train_tokens, n = 2, concatenator = " ")
+traindfm_2G <- dfm(train_tokens_2G, tolower = F)
+frequencylist_2G <- textstat_frequency(traindfm_2G)
+n <- sum(frequencylist_2G$frequency >= 3)
+keeplist_2G <- frequencylist_2G$feature[1:n]
+model_tokens_2G <- tokens_select(train_tokens_2G, keeplist_2G, selection = "keep")
+```
+
+### Building the 3-grams token list 
+
+```{r, cache=T}
+train_tokens_3G <- tokens_ngrams(train_tokens, n = 3, concatenator = " ")
+traindfm_3G <- dfm(train_tokens_3G, tolower = F)
+frequencylist_3G <- textstat_frequency(traindfm_3G)
+n <- sum(frequencylist_3G$frequency >= 1)
+keeplist_3G <- frequencylist_3G$feature[1:n]
+model_tokens_3G <- tokens_select(train_tokens_3G, keeplist_3G, selection = "keep")
+```
+
+We now have everything we need to build our model
+
