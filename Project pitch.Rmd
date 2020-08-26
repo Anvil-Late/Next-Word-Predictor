@@ -161,7 +161,27 @@ train_tokens <- tokens_tolower(train_tokens)
 
 ## Token processing
 
+### Stopwords
 
+In every language, some words are here for grammatical purposes and are not the ones that carry the message of the sentence. These words are called stopwords, and their presence can confuse our predictive model, so we'll filter them out.
+
+An example of a stopword in the english language is "the". Here's a sample of the built-in list of stopwords provided by the quanteda package
+
+```{r}
+stopwords(language = "en")[1:10]
+```
+
+We'll use that to filter them out in our dataset :
+
+```{r, cache=T}
+train_tokens <- tokens_select(train_tokens, stopwords(), selection = "remove")
+```
+
+Let's take the first element and see how it has changed now :
+
+```{r}
+train_tokens[[1]]
+```
 
 ### Profanity filtering
 
@@ -226,18 +246,18 @@ sum(frequencylist$frequency[1:811]) / sum(frequencylist$frequency)
 With only these 811 words, we can recreate almost 45% of the whole dataset. That's not quite enough, we'd like to be close to 75% :
 
 ```{r}
-sum(frequencylist$frequency >=20)
-sum(frequencylist$frequency[1:4072]) / sum(frequencylist$frequency)
+sum(frequencylist$frequency >=17)
+sum(frequencylist$frequency[1:4515]) / sum(frequencylist$frequency)
 ```
 
-Now we're at 86%, with only 4,072 words out of the total of 33444 words of our dataset. That means that with only 12% of the words we can recreate 86% of the source documents.
+Now we're at 75%, with only 4,515 words out of the total of 33444 words of our dataset. That means that with only 13% of the words we can recreate 75% of the source documents.
 
 # Final pre-processing
 
 What we will now do is save these 2,115 words and only keep those in our original tokenized train frame, the resulting subset is the one we will build our predictive model on.
 
 ```{r}
-keeplist <- frequencylist$feature[1:4072]
+keeplist <- frequencylist$feature[1:4515]
 model_tokens <- tokens_select(train_tokens, keeplist, selection = "keep")
 ```
 
@@ -258,7 +278,7 @@ This is how our model will train on the text we have. However, we can already se
 
 Here what is taken into account are pairs of words, which are called digrams. While "The" still has 2 possible results, the state "After The" only has one resulting outcome, "Fat". 
 
-Therefore, what we will now do is take our tokens list and make it into 2-grams and 3-grams token lists, only keep as subset of combinations that appear at least twice, and build three models combined into one in the following way :
+Therefore, what we will now do is take our tokens list and make it into 2-grams and 3-grams token lists, only keep as subset of combinations that appear at least 3 times, and build three models combined into one in the following way :
 
 - If the user enters 3 words, the model built on 3-grams will be called
 - If the user enters 2 words or if the 3-grams prediction fails, the model built on 2-grams will be called
@@ -272,7 +292,7 @@ Therefore, what we will now do is take our tokens list and make it into 2-grams 
 train_tokens_2G <- tokens_ngrams(train_tokens, n = 2, concatenator = " ")
 traindfm_2G <- dfm(train_tokens_2G, tolower = F)
 frequencylist_2G <- textstat_frequency(traindfm_2G)
-n <- sum(frequencylist_2G$frequency >= 2)
+n <- sum(frequencylist_2G$frequency >= 3)
 keeplist_2G <- frequencylist_2G$feature[1:n]
 model_tokens_2G <- tokens_select(train_tokens_2G, keeplist_2G, selection = "keep")
 ```
@@ -283,7 +303,7 @@ model_tokens_2G <- tokens_select(train_tokens_2G, keeplist_2G, selection = "keep
 train_tokens_3G <- tokens_ngrams(train_tokens, n = 3, concatenator = " ")
 traindfm_3G <- dfm(train_tokens_3G, tolower = F)
 frequencylist_3G <- textstat_frequency(traindfm_3G)
-n <- sum(frequencylist_3G$frequency >= 2)
+n <- sum(frequencylist_3G$frequency >= 1)
 keeplist_3G <- frequencylist_3G$feature[1:n]
 model_tokens_3G <- tokens_select(train_tokens_3G, keeplist_3G, selection = "keep")
 ```
