@@ -100,6 +100,7 @@ Considering the sizes of the datasets, we might not want to use 100% of the avai
 We'll start by building a training set that consists of 10% of each dataset.
 
 ```{r, cache=T}
+set.seed(1234)
 blogtrain <- sample(blogtext, 0.1*length(blogtext))
 
 
@@ -111,10 +112,13 @@ twittrain <- sample(blogtext, 0.1*length(twittext))
 
 training <- c(blogtrain, newstrain, twittrain)
 
-# removing full datasets to save some RAM
+# removing obsolete datasets to save some RAM
 rm(blogtext)
 rm(twittext)
 rm(newstext)
+rm(blogtrain)
+rm(newstrain)
+rm(twittrain)
 ```
 
 ## What's next ?
@@ -132,11 +136,14 @@ This is where the package quanteda comes in ; it can automate this process with 
 - Do not tokenize numbers
 - Do not tokenize punctuation
 - Do not tokenize symbols such as dollar signs or hashtags
+- Do not tokenize URLS
+- Do not tokenize twitter words such as "rt"
 - Split hyphenated words
 
 ```{r, cache=T}
 train_tokens <- tokens(training, what = "word", remove_numbers = T,
-                       remove_punct = T, remove_symbols = T, split_hyphens = T)
+                       remove_punct = T, remove_symbols = T, split_hyphens = T,
+                       remove_url = T, remove_twitter = T)
 ```
 
 
