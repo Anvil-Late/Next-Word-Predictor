@@ -212,15 +212,15 @@ train_tokens <- tokens_select(train_tokens, profanities, selection = "remove")
 We can now create our frequency matrix - or document feature matrix (DFM). Since our dataset has had quite some steps of pre-processing, we do not need a lot of parameters when creating it.
 
 ```{r, cache=T}
-traindfm <- dfm(train_tokens, tolower = F)
+unigram <- dfm(train_tokens, tolower = F)
 ```
 
 We can now see the most frequent words in our dataset :
 
 ```{r}
-frequencylist <- textstat_frequency(traindfm)
-head(frequencylist)
-top50 <- filter(frequencylist, rank <= 50)
+unifreq <- textstat_frequency(unigram)
+head(unifreq)
+top50 <- filter(unifreq, rank <= 50)
 qplot(reorder(feature, rank), frequency, data = top50) + 
    labs(x = "Word", y = "Frequency") + ggtitle("Most frequent words (top 50)") +
    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
@@ -232,36 +232,14 @@ qplot(reorder(feature, rank), frequency, data = top50) +
 Now that we saw the top 50 words, let's see a more detailed breakdown of the frequencies in our dataset :
 
 ```{r}
-quantile(frequencylist$frequency)
+quantile(unifreq$frequency)
 ```
 
-75% of the words in our dataset appear 4 times or less. Let's see the proportion of the data made of words with a frequency of 100 or more :
+75% of the words in our dataset appear 6 times or less. Let's see the proportion of the data made of words with a frequency of 100 or more :
 
-```{r}
-sum(frequencylist$frequency >=100)
-```
-Words with a frequency of 100 or more are in row 1 to 991. Let's make a subset of only these row, and see the proportion of total occurences these words represent :
 
-```{r}
-sum(frequencylist$frequency[1:811]) / sum(frequencylist$frequency)
-```
-With only these 811 words, we can recreate almost 45% of the whole dataset. That's not quite enough, we'd like to be close to 75% :
 
-```{r}
-sum(frequencylist$frequency >=17)
-sum(frequencylist$frequency[1:4515]) / sum(frequencylist$frequency)
-```
 
-Now we're at 75%, with only 4,515 words out of the total of 33444 words of our dataset. That means that with only 13% of the words we can recreate 75% of the source documents.
-
-# Final pre-processing
-
-What we will now do is save these 2,115 words and only keep those in our original tokenized train frame, the resulting subset is the one we will build our predictive model on.
-
-```{r}
-keeplist <- frequencylist$feature[1:4515]
-model_tokens <- tokens_select(train_tokens, keeplist, selection = "keep")
-```
 
 
 # Markov Chains and N-Grams
