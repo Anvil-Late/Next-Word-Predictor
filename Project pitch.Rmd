@@ -24,6 +24,7 @@ library(caret)
 library(e1071)
 library(quanteda)
 library(markovchain)
+library(data.table)
 library(knitr) # Md document aesthetics
 library(kableExtra) # Md document aesthetics
 ```
@@ -237,7 +238,12 @@ quantile(unifreq$frequency)
 
 75% of the words in our dataset appear 6 times or less. 
 
+We'll create a dataset that shows the count of each words in our training corpus, and we set a benchmark of at least 4 total counts. The words below that will be removed, and this will greatly reduce our training set's size :
 
+```{r, cache=T}
+unifreq <- data.table(word = unifreq$feature, count = unifreq$frequency)
+unifreq <- unifreq[count > 4, ]
+```
 
 
 
