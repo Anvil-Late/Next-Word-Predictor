@@ -507,3 +507,20 @@ ngram_out_unigetter <- function(inlist_ngrams, N){
       ))
 }
 ```
+
+# Computing
+
+The first thing we compute is the probabilities of all the N grams in our list given the provided n-1 gram :
+
+```{r}
+inlist_prob <- function(ngram_inlist, n_minus_gram, wordinput){
+   # ngram_inlist : the list given by ngram_inlist_getter()
+   # n_minus_gram : the N-1 Grams list
+   # wordinput : the provided n-1 gram
+   pattern_count <- n_minus_gram[wordinput, count, on=.(word)]
+   ngram_inlist[, prob := ngram_inlist[, adj_count] / pattern_count]
+}
+```
+
+We also need to compute the Katz numerator $\alpha$ :
+
