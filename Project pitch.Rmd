@@ -626,3 +626,29 @@ nextword_getter <- function(userinput, noresult = 3){
    }
 }
 ```
+
+We have our next word predictor. 
+Our actual prediction function will call it but will have one small step before : it will preprocess the input the same way we preprocessed our train datasets.
+
+```{r}
+nextword_preproc <- function(wordinput){
+   names(wordinput) <- NULL
+   processed_input <- tokens(wordinput, what = "word", remove_numbers = T,
+                       remove_punct = T, remove_symbols = T, split_hyphens = T,
+                       remove_url = T, remove_twitter = T)
+   processed_input <- tokens_select(processed_input, stopwords(), selection = "remove")
+   processed_input <- tokens_select(processed_input, profanities, selection = "remove")
+   processed_input <- tokens_tolower(processed_input)
+   
+   return(paste(tail(processed_input$text1, 2), collapse = "_"))
+}
+
+nextword <- function(userinput, noresult=3){
+   userinput_bigram <- nextword_preproc(userinput)
+   answer <- nextword_getter(userinput_bigram, noresult = noresult)
+   if (dim(answer)[1] == 0){
+      return("no prediction found")
+   }
+   return(answer)
+}
+```
