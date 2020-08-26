@@ -235,8 +235,7 @@ Now that we saw the top 50 words, let's see a more detailed breakdown of the fre
 quantile(unifreq$frequency)
 ```
 
-75% of the words in our dataset appear 6 times or less. Let's see the proportion of the data made of words with a frequency of 100 or more :
-
+75% of the words in our dataset appear 6 times or less. 
 
 
 
