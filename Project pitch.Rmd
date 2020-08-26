@@ -274,23 +274,21 @@ Therefore, what we will now do is take our tokens list and make it into 2-grams 
 ### Building the 2-grams token list 
 
 ```{r, cache=T}
-train_tokens_2G <- tokens_ngrams(train_tokens, n = 2, concatenator = " ")
-traindfm_2G <- dfm(train_tokens_2G, tolower = F)
-frequencylist_2G <- textstat_frequency(traindfm_2G)
-n <- sum(frequencylist_2G$frequency >= 3)
-keeplist_2G <- frequencylist_2G$feature[1:n]
-model_tokens_2G <- tokens_select(train_tokens_2G, keeplist_2G, selection = "keep")
+train_tokens_2G <- tokens_ngrams(train_tokens, n = 2)
+bigram <- dfm(train_tokens_2G, tolower = F)
+bifreq <- textstat_frequency(bigram)
+bifreq <- data.table(word = bifreq$feature, count = bifreq$frequency)
+bifreq <- bifreq[count > 4, ]
 ```
 
 ### Building the 3-grams token list 
 
 ```{r, cache=T}
-train_tokens_3G <- tokens_ngrams(train_tokens, n = 3, concatenator = " ")
-traindfm_3G <- dfm(train_tokens_3G, tolower = F)
-frequencylist_3G <- textstat_frequency(traindfm_3G)
-n <- sum(frequencylist_3G$frequency >= 1)
-keeplist_3G <- frequencylist_3G$feature[1:n]
-model_tokens_3G <- tokens_select(train_tokens_3G, keeplist_3G, selection = "keep")
+train_tokens_3G <- tokens_ngrams(train_tokens, n = 3)
+trigram <- dfm(train_tokens_3G, tolower = F)
+trifreq <- textstat_frequency(trigram)
+trifreq <- data.table(word = trifreq$feature, count = trifreq$frequency)
+trifreq <- trifreq[count > 4, ]
 ```
 
 We now have everything we need to build our model
