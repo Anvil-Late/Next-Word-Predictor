@@ -372,3 +372,83 @@ add_zr(biNr)
 add_zr(triNr)
 ```
 
+To discount $r$ into $r^*$ with Goog-Turing smoothing, we need to fit a linear model with $log(Z_r)$ as outcome and $log(r)$ as regressor
+
+```{r}
+unifit <- lm(log(Zr) ~ log(count), data = uniNr)
+bifit <- lm(log(Zr) ~ log(count), data = biNr)
+trifit <- lm(log(Zr) ~ log(count), data = triNr)
+```
+
+With this model, we will smooth our $Z_r$ values that will be used to calculate our dicounted values $r^*$. For high values of $r$, we can assimilate $r^* = r$. For lower values of $r$, the discounted value $r^*$ is :
+
+$$
+r^* = \frac{
+(r+1)\frac{N_{r+1}}{N_r} - r\frac{(k+1)N_{k+1}}{N_1}
+}{
+1-\frac{(k+1)N_{k+1}}{N_1}
+}
+$$
+
+Where $k$ is the benchmark value for which $r^* = r$ if $r > k$. Empirically, $k$ is set to 5.
+
+We can simplify this equation by writing it in this form :
+
+$$
+r^* = \frac{
+(r+1)\frac{N_{r+1}}{N_r} - r \times S
+}{
+1-S
+}
+$$
+
+Where $ S = \frac{(k+1)N_{k+1}}{N_1}$
+
+Of course, in our case, all $N_r$ values will be replaced by $Z_r$ estimated with the appropriate model fit :
+
+```{r}
+
+k=5 # Benchmark 
+
+
+calc_disc <- function(r, gram) {
+  if (gram==1) {
+    modelfit <- unifit
+  } else if (gram==2) {
+    modelfit <- bifit
+  } else if (gram==3) {
+    modelfit <- trifit
+  }
+  # Values N1, Nr, Nk+1 in the fraction
+  Z_1 <- exp(predict(modelfit, newdata=data.frame(count = 1)))
+  Z_r <- exp(predict(modelfit, newdata=data.frame(count = r)))
+  Z_r_plus <- exp(predict(modelfit, newdata=data.frame(count = (r+1))))
+  Z_k_plus <- exp(predict(modelfit, newdata=data.frame(count = (k+1))))
+  
+  # Calculate S
+  S <- ((k+1)*Z_k_plus)/(Z_1)
+  
+  # Calculate r*
+  adj_r <- ((r+1)*(Z_r_plus)/(Z_r)-r*S)/(1-S)
+  return(adj_r)
+}
+
+adjust_count <- function(ngram_freq, gram) {
+  ngram_freq[count > k, adj_count := as.numeric(count)] # if r > k, r* = r
+  ngram_freq[count <= k, adj_count := calc_disc(count, gram)] # if r >= k, 
+                                                              # we calculate
+}
+unifreq <- data.table(unifreq)
+adjust_count(unifreq, 1)
+adjust_count(bifreq, 2)
+adjust_count(trifreq, 3)
+
+```
+
+We'll later merge the tables so we we set the "word" columns as keys :
+
+```{r}
+setkey(unifreq, word)
+setkey(bifreq, word)
+setkey(trifreq, word)
+```
