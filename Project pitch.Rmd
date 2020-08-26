@@ -445,10 +445,65 @@ adjust_count(trifreq, 3)
 
 ```
 
-We'll later merge the tables so we we set the "word" columns as keys :
+We'll later call the "word" columns so we we set them as keys :
 
 ```{r}
 setkey(unifreq, word)
 setkey(bifreq, word)
 setkey(trifreq, word)
+```
+
+
+# Building the prediction function
+
+Given a bigram input, such as "fat burning", our function will function like this :
+
+
+- If the bigram is found in our list :
+   
+   1. Retrieve all observed trigrams in our list matching this bigram such as "fat burning workout" or "fat burning food". From them, deduce the probability of the next word being "workout", "food", or any other in our trigram list according to the frequency of each pattern
+   
+   2. Calculate the probability of the next word being one that doesnt match our trigram list.
+   
+   3. Retrieve all observed bigrams in our list matching the last word of the input such as "burning food", "burning wood" or even "Burning Man" (the festival, please don't get strange ideas). Take only the bigrams that are included in the unobserved trigrams from point n°2. From them, estimate the next word and the Katz numerator $\alpha$.
+   
+   4. Retrieve unigrams that would create unobserved bigram when put with "burning" that would be included in the unobserved trigrams from point n°2
+   
+- If the bigram input is not found in our list :
+
+   5. If the last word ("burning") is in our list :
+      
+      * Find all observed bigrams using "burning" in our list and estimate the next word and the Katz numerator $\alpha$
+      * Retrieve words that would make bigrams that are not in our list and estimate the next word from maximum likelihood
+   
+   6. If the last word is not in our list, estimate the next word from maximum likelihood
+   
+
+We therefore need 2 primary retrieving functions :
+
+One that retrieves all of the N grams in our list given an N-1 gram input :
+
+```{r}
+ngram_inlist_getter <- function(wordinput, ngram_freq){
+   process_word <- sprintf("%s%s%s", "^", wordinput, "_")
+   # this transforms "word_input" into "^word_input_" so we can use it in grep
+   ngram_freq[grep(pattern = process_word,
+                   ngram_freq[, word],
+                   perl = T,
+                   useBytes = T)]
+}
+```
+
+One that retrieves all the unigrams in our list that would make N grams that are not in our list :
+
+```{r}
+ngram_out_unigetter <- function(inlist_ngrams, N){
+   unigrams_in_inlist_ngrams <- str_split_fixed(inlist_ngrams[, word], "_", N)[, N]
+   # This gets all the unigrams that are the last words in our ngram list
+   # If we remove them from our unigram list, we only end up with unigrams that
+   # would constitute new ngrams
+   return(data.table(
+      word = unifreq[!unigrams_in_inlist_ngrams, word, on = "word"]
+      ))
+}
 ```
