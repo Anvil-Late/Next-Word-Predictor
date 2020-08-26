@@ -291,5 +291,51 @@ trifreq <- data.table(word = trifreq$feature, count = trifreq$frequency)
 trifreq <- trifreq[count > 4, ]
 ```
 
-We now have everything we need to build our model
+```{r, echo=F}
+rm(train_tokens_2G)
+rm(train_tokens_3G)
+```
+
+
+# Good-Turing smoothing
+
+Every word has a frequency, for instance, we previously saw that the word "one" appears 47,152 times, and "just" appears 37,521 times.
+These are frequencies, and only one word has a frequency of 47,152, which means that the frequency of the 47,152 frequency is 1.
+Similarly, the 37,521 frequency has a frequency of 1. Since there are no words that appear exactly 47,000 times, the associated frequecy of frequency is 0.
+
+On the contrary, there might be many words that appear 10 times. We call that frequency of frequencies $N_r$ where $r$ is a word count.
+
+For instance, $N_{47,152} = 1$, $N_{37,521} = 1$ and $N_{47,000} = 0$
+
+## Step 1 : Calculating the frequency of frequencies
+
+
+We'll create a table to see the frequencies of frequencies for unigrams :
+
+```{r}
+unitable <- table(unifreq[,.(count)])
+head(unitable)
+```
+We then store these results in a data table, where "count" will be a frequency and "Nr" will be the frequency of that frequency :
+
+```{r}
+uniNr <- data.table(
+   count = as.integer(names(unitable)),
+   Nr = as.integer(unitable)
+)
+```
+
+We do the same for bigrams and trigrams :
+
+```{r}
+bitable <- table(bifreq[,.(count)])
+biNr <- data.table(count = as.integer(names(bitable)), Nr = as.integer(bitable))
+
+tritable <- table(trifreq[,.(count)])
+triNr <- data.table(count = as.integer(names(tritable)), Nr = as.integer(tritable))
+```
+
+```{r, echo=F}
+rm(unitable, bitable, tritable)
+```
 
