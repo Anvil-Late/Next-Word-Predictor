@@ -307,6 +307,8 @@ On the contrary, there might be many words that appear 10 times. We call that fr
 
 For instance, $N_{47,152} = 1$, $N_{37,521} = 1$ and $N_{47,000} = 0$
 
+A good way to think about frequency of frequencies is to ask oneself "How many words appear $r$ times in our dataset ?".
+
 ## Step 1 : Calculating the frequency of frequencies
 
 
@@ -337,5 +339,36 @@ triNr <- data.table(count = as.integer(names(tritable)), Nr = as.integer(tritabl
 
 ```{r, echo=F}
 rm(unitable, bitable, tritable)
+```
+
+## Zr - averaging and smoothing
+
+The formula for Zr-averaging is $Z_r = \frac{N_r}{0.5(t-q)}$ where $r$ is the current count for which $N_r \neq 0$, $q$ is the previous count and $t$ is the next, and $Z_r$ will be the adjusted value of $N_r$ taking into account the fact that for large values of $r$, most $N_r$ will be equal to zero. 
+
+We'll create a function that adds a $Z_r$ column to our Nr datasets, with the following conditions :
+
+- When $r$ is the lowest count, $q=0$
+- When $r$ is the highest count, $t = 2r-q$ so that $0.5(t-q)=r-q$
+
+```{r}
+add_zr <- function(df){
+   n <- dim(df)[1]
+   
+   ## Special cases when r is lowest count or highest count
+   df[1, Zr := Nr / (0.5 * df[2, count])]
+   df[n, Zr := Nr / (count - df[n-1, count])]
+   
+   ## General case :
+   r <- 2:(n-1)
+   df[r, Zr := Nr / (0.5 * (df[r+1, count] - df[r-1, count]))]
+}
+```
+
+We now apply it to our Nr datasets :
+
+```{r}
+add_zr(uniNr)
+add_zr(biNr)
+add_zr(triNr)
 ```
 
