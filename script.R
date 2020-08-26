@@ -85,22 +85,22 @@ rm(traindfm_2G)
 rm(traindfm_3G)
 
 
-
-model_tokens <- sample(model_tokens, 5000)
+set.seed(1234)
+model_tokens <- sample(model_tokens, 500)
 model_tokens <- paste(model_tokens)
 set.seed(1234)
 markov_fit_1 <- markovchainFit(model_tokens)
 
 
-
-model_tokens_2G <- sample(model_tokens_2G, 5000)
+set.seed(1234)
+model_tokens_2G <- sample(model_tokens_2G, 500)
 model_tokens_2G <- paste(model_tokens_2G)
 set.seed(1234)
 markov_fit_2 <- markovchainFit(model_tokens_2G)
 
 
 set.seed(1234)
-model_tokens_3G <- sample(model_tokens_3G, 1000)
+model_tokens_3G <- sample(model_tokens_3G, 500)
 model_tokens_3G <- paste(model_tokens_3G)
 set.seed(1234)
 markov_fit_3 <- markovchainFit(model_tokens_3G)
@@ -116,7 +116,9 @@ predictive_text <- function(text){
    text <- tokens(text)
    text <- tokens_select(text, keeplist, selection = "keep")
    text <- paste(text)
-   
+   n <- length(text)
+   text <- paste(text[n])
+   print(text)
    suggest <- markov_fit_1$estimate[ text, ] %>%
       sort(decreasing = T) %>% 
       head(3) 
@@ -127,10 +129,33 @@ predictive_text <- function(text){
    return(suggest)
 }
 
+predictive_text_3 <- function(text){
+   text <- tolower(text)
+   text <- tokens(text)
+   text <- tokens_select(text, keeplist, selection = "keep")
+   text <- paste(text)
+   n <- length(text)
+   text <- paste(text[n-2], text[n-1], text[n])
+   print(text)
+   suggest <- markov_fit_3$estimate[ text, ] %>%
+      sort(decreasing = T) %>% 
+      head(3) 
+   
+   suggest <- suggest[suggest > 0] %>% 
+      names()
+   
+   return(suggest)
+}
+
+
+
 predictive_text(predt)
 
 
-predt <- "Very early observations on the Bills game: Offense still struggling but the"
+predt <- "The guy in front of me just bought a pound of bacon, a bouquet, and a case of"
 
 
-head(markov_fit_2$estimate[predt], 3)
+head(markov_fit_1$estimate["the"], 3)
+
+
+head(sort(markov_fit_2$estimate["must be", ], decreasing = T), 3)
