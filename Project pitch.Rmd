@@ -587,6 +587,42 @@ nextword_getter <- function(userinput, noresult = 3){
       # If less than the demanded amount results, print as many results as there are
       # (dim(all_probs)[1])
       return(all_probs[prob != 0][1:min(dim(all_probs[prob != 0])[1], noresult)])
+   } else { # if bigram input not in list
+      userinput_word2 <- str_split_fixed(userinput, "_", 2)[2]
+      
+      if (length(which(unifreq$word == userinput_word2)) >0){# if last word found
+                                                             # in unigram list
+         
+         # retrieve all bigrams in list beginning with last word of input
+         bigram_inlist <- ngram_inlist_getter(userinput_word2, bifreq)
+         # Calculate probabilities of bigrams in list
+         bigram_inlist <- inlist_prob(bigram_inlist, unifreq, userinput_word2)
+         # Calculate alpha
+         input_word2_alpha <- alpha_numerator(bigram_inlist, unifreq, userinput_word2)
+         
+         # retrieve all unigrams that would constitute new bigrams :
+         big_out_uni <- ngram_out_unigetter(bigram_inlist, 2)
+         # calculate maximum likelihood for unigrams in bigrams not in list :
+         big_out_uni[, prob := unifreq[big_out_uni, count, on = .(word)] / 
+                        unifreq[big_out_uni, sum(count), on = .(word)]
+                     ]
+         big_out_uni[, prob := input_word2_alpha * prob]
+         
+         # only keep "word" and "prob" columns in bigram_inlist
+         # and process the words in a readable manner
+         bigram_inlist[, c("count", "adj_count") := NULL]
+         bigram_inlist[, word := str_remove(bigram_inlist[, word], "([^_]+_)+")]
+         
+         all_probs <- setorder(rbind(bigram_inlist, big_out_uni), -prob)
+         return(all_probs[prob != 0][1:noresult])
+         
+         
+      } else { # if last word not found in unigram list
+         # We call the maximum likelihood
+         return(setorder(unifreq, -adj_count)[1:noresult, .(word, 
+                                                            prob = adj_count / 
+                                                               unifreq[, sum(count)])])
+      }
    }
 }
 ```
