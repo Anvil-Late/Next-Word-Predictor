@@ -524,3 +524,14 @@ inlist_prob <- function(ngram_inlist, n_minus_gram, wordinput){
 
 We also need to compute the Katz numerator $\alpha$ :
 
+```{r}
+alpha_numerator <- function(ngram_inlist, n_minus_gram, wordinput){
+   if (dim(ngram_inlist)[1] == 0){
+      return(1)
+   } else {
+      return(
+         sum(ngram_inlist[, count - adj_count] / n_minus_gram[wordinput, count, on = .(word)]))
+   }
+}
+```
+
