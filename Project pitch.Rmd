@@ -310,7 +310,25 @@ rm(trigram)
 
 # Katz' backoff model
 
-The model we will build is based on Katz' backoff model principle
+## General backoff model
+
+The model we will build is based on Katz' backoff model principle.
+
+In theory, what we can use what we have to make predictions. If the bigram input is found in the trigram list, return the word that makes the most likely trigram. If the bigram input, take only the last word and repeat the process in the bigram list. If there is no match in the bigram list, just select the most frequent word in the unigrams list :
+
+![](./data/img/img1.PNG)
+
+![](./data/img/img2.PNG)
+
+## Katz' model
+
+Here's the main idea behind Katz' backoff model. Let's say you're fishing and you got 7 trouts, 2 salmons and 1 tuna. For your 11th fish, you could either try to predict only from the caught fish (70% chance of getting a trout, 20% for salmon and 10% for tuna) or you could "eat" a bit of probability for each of the 3 known outcome and use that to make a probability of getting a new fish (69% chance of getting a trout, 18% for salmon, 7% for tuna and 6% chances of getting a new fish). What we did here is that we **smoothed** the probabilities of each observed outcomes to account for a possible unobserved outcome.
+
+With this idea in mind, what Katz's does is that it will also look for matching trigrams, but even if there is a match, it will still backoff to the list of observed bigrams to look for possible combinations that would create unobserved trigrams. 
+
+Lets look at the example below : a general backoff model would not find the right answer and would simply suggest "shake", whereas Katz' model would suggest the correct answer, "tea".
+
+![](./data/img/img3.PNG)
 
 # Good-Turing smoothing
 
