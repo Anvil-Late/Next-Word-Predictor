@@ -348,14 +348,13 @@ The $\alpha$ coefficient can be thought of as a "leftover probability" once we "
 
 $$
  \frac{C(ngram) - C^*(ngram)}{C(n-1gram)}
-
 $$
 
 Where :
 
 - $C(ngram)$ is the total count of ngrams matching the input. If equal to zero, $\alpha = 1$
 - $C^*(ngram)$ is the total *discounted* count of ngrams matching the input
-- $c(n-1gram)$ in the total count of the $(n-1)gram$ input in our $(n-1)gram$ list
+- $C(n-1gram)$ in the total count of the $(n-1)gram$ input in our $(n-1)gram$ list
 
 We now have to chose a smoothing method to obtain discounted counts and probabilities. A frequent method used with Katz' backoff model is the Good-Turing method. There are other methods that might be more reliable but this one is quite easy to put into code and compute.
 
