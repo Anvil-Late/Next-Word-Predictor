@@ -20,11 +20,10 @@ This project will use the following packages ; if you want to reproduce this res
 ```{r}
 library(dplyr)
 library(ggplot2)
-library(caret)
-library(e1071)
 library(quanteda)
-library(markovchain)
 library(data.table)
+library(stringi)
+library(stringr)
 library(knitr) # Md document aesthetics
 library(kableExtra) # Md document aesthetics
 ```
@@ -98,17 +97,17 @@ We have extremely large datasets, taking a total of more than 600MB of memory. W
 
 Considering the sizes of the datasets, we might not want to use 100% of the available data in our model building. This is good, it means that we can be selective in our filtering and pre-processing and still end up with a large enough database to build an efficient model.
 
-We'll start by building a training set that consists of 10% of each dataset.
+We'll start by building a training set that consists of 80% of each dataset.
 
 ```{r, cache=T}
 set.seed(1234)
-blogtrain <- sample(blogtext, 0.1*length(blogtext))
+blogtrain <- sample(blogtext, 0.8*length(blogtext))
 
 
-newstrain <- sample(blogtext, 0.1*length(newstext)) 
+newstrain <- sample(blogtext, 0.8*length(newstext)) 
 
 
-twittrain <- sample(blogtext, 0.1*length(twittext)) 
+twittrain <- sample(blogtext, 0.8*length(twittext)) 
 
 
 training <- c(blogtrain, newstrain, twittrain)
@@ -292,8 +291,13 @@ trifreq <- trifreq[count > 4, ]
 ```
 
 ```{r, echo=F}
+# I need to free some RAM for the next computations
+rm(train_tokens)
 rm(train_tokens_2G)
 rm(train_tokens_3G)
+rm(unigram)
+rm(bigram)
+rm(trigram)
 ```
 
 
@@ -543,6 +547,7 @@ nextword_getter <- function(userinput, noresult = 3){
    
    if (length(which(bifreq$word == userinput)) > 0){ # if bigram found in our list
       # retrieve trigrams in our list that match the input :
+      print("good !!!")
       trigram_inlist <- ngram_inlist_getter(userinput, trifreq)
       userinput_word2 <- str_split_fixed(userinput, "_", 2)[, 2]
       # retrieve bigrams in our list that match the last word of the input
@@ -633,17 +638,18 @@ Our actual prediction function will call it but will have one small step before 
 ```{r}
 nextword_preproc <- function(wordinput){
    names(wordinput) <- NULL
-   processed_input <- tokens(wordinput, what = "word", remove_numbers = T,
+   processed_input <- tokens(wordinput, remove_numbers = T,
                        remove_punct = T, remove_symbols = T, split_hyphens = T,
                        remove_url = T, remove_twitter = T)
    processed_input <- tokens_select(processed_input, stopwords(), selection = "remove")
    processed_input <- tokens_select(processed_input, profanities, selection = "remove")
    processed_input <- tokens_tolower(processed_input)
    
-   return(paste(tail(processed_input$text1, 2), collapse = "_"))
+   return(paste(tail(processed_input[[1]], 2), collapse = "_"))
+   
 }
 
-nextword <- function(userinput, noresult=3){
+nextword <- function(userinput, noresult=5){
    userinput_bigram <- nextword_preproc(userinput)
    answer <- nextword_getter(userinput_bigram, noresult = noresult)
    if (dim(answer)[1] == 0){
@@ -651,4 +657,14 @@ nextword <- function(userinput, noresult=3){
    }
    return(answer)
 }
+```
+
+And now we test :
+
+```{r}
+nextword_preproc("new york")
+```
+
+```{r}
+nextword("he likes to eat ice")
 ```
