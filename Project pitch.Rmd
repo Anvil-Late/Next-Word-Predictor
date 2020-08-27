@@ -104,10 +104,10 @@ set.seed(1234)
 blogtrain <- sample(blogtext, 0.8*length(blogtext))
 
 
-newstrain <- sample(blogtext, 0.8*length(newstext)) 
+newstrain <- sample(newstext, 0.8*length(newstext)) 
 
 
-twittrain <- sample(blogtext, 0.8*length(twittext)) 
+twittrain <- sample(twittext, 0.8*length(twittext)) 
 
 
 training <- c(blogtrain, newstrain, twittrain)
@@ -146,6 +146,9 @@ train_tokens <- tokens(training, what = "word", remove_numbers = T,
                        remove_url = T, remove_twitter = T)
 ```
 
+```{r, echo=F}
+rm(training)
+```
 
 Let's check how that changed one of our lines :
 
@@ -227,6 +230,10 @@ qplot(reorder(feature, rank), frequency, data = top50) +
          plot.title = element_text(hjust = 0.5))
 ```
 
+```{r, echo=F}
+rm(unigram)
+
+```
 
 
 Now that we saw the top 50 words, let's see a more detailed breakdown of the frequencies in our dataset :
@@ -280,6 +287,11 @@ bifreq <- data.table(word = bifreq$feature, count = bifreq$frequency)
 bifreq <- bifreq[count > 4, ]
 ```
 
+```{r, echo=F}
+rm(bigram)
+rm(train_tokens_2G)
+```
+
 ### Building the 3-grams token list 
 
 ```{r, cache=T}
@@ -293,10 +305,8 @@ trifreq <- trifreq[count > 4, ]
 ```{r, echo=F}
 # I need to free some RAM for the next computations
 rm(train_tokens)
-rm(train_tokens_2G)
+
 rm(train_tokens_3G)
-rm(unigram)
-rm(bigram)
 rm(trigram)
 ```
 
@@ -662,9 +672,10 @@ nextword <- function(userinput, noresult=5){
 And now we test :
 
 ```{r}
-nextword_preproc("new york")
+nextword("new york")
 ```
 
 ```{r}
 nextword("he likes to eat ice")
 ```
+
