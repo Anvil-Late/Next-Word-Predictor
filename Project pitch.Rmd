@@ -672,10 +672,58 @@ nextword <- function(userinput, noresult=5){
 And now we test :
 
 ```{r}
-nextword("new york")
+nextword("I live in new york")
 ```
 
 ```{r}
-nextword("he likes to eat ice")
+nextword("make sure to eat fruits and")
 ```
+Our predictor seems to work fine on easy examples. 
+
+Tu push the testing a bit further, we were provided the following test set, with several sentences and their ending, to which we added our model's predictions :
+
+```{r, echo=F}
+testing <- data.table(
+   sentence = c("The guy in front of me just bought a pound of bacon, a bouquet, and a case of",
+                "You're the reason why I smile everyday. Can you follow me please? It would mean the",
+                "Hey sunshine, can you follow me and make me the",
+                "Very early observations on the Bills game: Offense still struggling but the",
+                "Go on a romantic date at the",
+                "Well I'm pretty sure my granny has some old bagpipes in her garage I'll dust them off and be on my",
+                "Ohhhhh #PointBreak is on tomorrow. Love that film and haven't seen it in quite some",
+                "After the ice bucket challenge Louis will push his long wet hair out of his eyes with his little",
+                "Be grateful for the good times and keep the faith during the",
+                "If this isn't the cutest thing you've ever seen, then you must be"
+   ),
+   answers = c("beer",
+               "world",
+               "happiest",
+               "defense",
+               "beach",
+               "way",
+               "time",
+               "fingers",
+               "bad",
+               "insane"
+   )
+)
+
+```
+
+
+
+```{r, echo=F}
+predictions <- character()
+
+for (i in 1:dim(testing)[1]){
+   predictions[i] <- nextword(testing$sentence[i])
+}
+
+testing[, predictions := predictions]
+kable(testing) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+Now we see that our predictor is a bit off. Some examples have a majority of stopwords that actually have meaning put together such as "be on my way". For those, it might be a good idea to have a second training set entirely built on the user's history which does not filter out stop words. 
+
+In addition, we stopped our training set building at trigrams, which are not enough for predictions in sentences in which part of the message is carried along longer distances, for instance in the second to last example where "faith" at the end is linked to "good" which is in the beginning. For that, we would either need to train our model on higher orders of n-grams or switch to a different kind of predictor instead of the Katz Backoff.
 
