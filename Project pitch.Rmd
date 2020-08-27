@@ -547,7 +547,7 @@ nextword_getter <- function(userinput, noresult = 3){
    
    if (length(which(bifreq$word == userinput)) > 0){ # if bigram found in our list
       # retrieve trigrams in our list that match the input :
-      print("good !!!")
+      
       trigram_inlist <- ngram_inlist_getter(userinput, trifreq)
       userinput_word2 <- str_split_fixed(userinput, "_", 2)[, 2]
       # retrieve bigrams in our list that match the last word of the input
