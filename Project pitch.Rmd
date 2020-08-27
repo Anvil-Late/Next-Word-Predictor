@@ -150,9 +150,6 @@ train_tokens <- tokens(training, what = "word", remove_numbers = T,
                        remove_url = T, remove_twitter = T)
 ```
 
-```{r, echo=F}
-rm(training)
-```
 
 Let's check how that changed one of our lines :
 
@@ -160,6 +157,11 @@ Let's check how that changed one of our lines :
 training[1]
 train_tokens[[1]]
 ```
+
+```{r, echo=F}
+rm(training)
+```
+
 
 Finally, to get the full transformation we wanted, we convert all of the tokens to lower case :
 
@@ -250,42 +252,31 @@ quantile(unifreq$frequency)
 
 We'll create a dataset that shows the count of each words in our training corpus, and we set a benchmark of at least 4 total counts. The words below that will be removed, and this will greatly reduce our training set's size :
 
-```{r, cache=T}
+```{r}
 unifreq <- data.table(word = unifreq$feature, count = unifreq$frequency)
 unifreq <- unifreq[count > 4, ]
 ```
 
 
 
-# Markov Chains and N-Grams
-
-What we plan on doing here is to build a predictive model using Markov Chains, which will interpret text as a "current state", with a probability of having a next word as the "next state". 
-
-For example, when looking at the sentence "the dog chases after the fat cat", each word has a probability of leading to the next :
-
-![](./data/img/1markov.PNG)
-
-The word "the" has a 50% chance of leading to "dog" and 50% chance of leading to "fat", while the other words only have one result with a probability of 100%. 
-
-This is how our model will train on the text we have. However, we can already see the limitations of this method : each word will have many results and if we do not take the previous one into account, we'll have a high chance of predicting gibberish. This is why the "current state" has to be a result of several words. If we do that on the same example :
-
-![](./data/img/2markov.PNG)
-
-Here what is taken into account are pairs of words, which are called digrams. While "The" still has 2 possible results, the state "After The" only has one resulting outcome, "Fat". 
-
-Therefore, what we will now do is take our tokens list and make it into 2-grams and 3-grams token lists, only keep as subset of combinations that appear at least 3 times, and build three models combined into one in the following way :
-
-- If the user enters 3 words, the model built on 3-grams will be called
-- If the user enters 2 words or if the 3-grams prediction fails, the model built on 2-grams will be called
-- If the user only enters 1 word or if the other models fail, the model built on 1-grams will be called.
-
 # Building n-grams
+
+Now we have a processed and filtered list of all the words used in our dataset, along with their DFM. However, with that, our predictor will only produce words according to their probability of appearing. What we want is for it to take into account the previous words as well.
+
+What we ultimately want is, basically, to take a 2-word input, which is called a bigram, and check what word to add to create the most likely 3-word (trigram) in our list. The word used to create this trigram will be our predictor. 
+
+For example : the input is "banana milk". In our list of trigrams, the one that matches "banana milk" that appears the most is "banana milk shake". Therefore, the output will be "shake".
+
+In order to do that, a list of 1-word sets (unigrams) is not enough, we need to build a list of 2-grams and 3-grams.
 
 ### Building the 2-grams token list 
 
 ```{r, cache=T}
 train_tokens_2G <- tokens_ngrams(train_tokens, n = 2)
 bigram <- dfm(train_tokens_2G, tolower = F)
+```
+
+```{r}
 bifreq <- textstat_frequency(bigram)
 bifreq <- data.table(word = bifreq$feature, count = bifreq$frequency)
 bifreq <- bifreq[count > 4, ]
@@ -301,6 +292,9 @@ rm(train_tokens_2G)
 ```{r, cache=T}
 train_tokens_3G <- tokens_ngrams(train_tokens, n = 3)
 trigram <- dfm(train_tokens_3G, tolower = F)
+```
+
+```{r}
 trifreq <- textstat_frequency(trigram)
 trifreq <- data.table(word = trifreq$feature, count = trifreq$frequency)
 trifreq <- trifreq[count > 4, ]
@@ -314,6 +308,9 @@ rm(train_tokens_3G)
 rm(trigram)
 ```
 
+# Katz' backoff model
+
+The model we will build is based on Katz' backoff model principle
 
 # Good-Turing smoothing
 
@@ -420,7 +417,7 @@ r^* = \frac{
 }
 $$
 
-Where $ S = \frac{(k+1)N_{k+1}}{N_1}$
+Where $S = \frac{(k+1)N_{k+1}}{N_1}$
 
 Of course, in our case, all $N_r$ values will be replaced by $Z_r$ estimated with the appropriate model fit :
 
@@ -461,6 +458,12 @@ adjust_count(unifreq, 1)
 adjust_count(bifreq, 2)
 adjust_count(trifreq, 3)
 
+```
+
+```{r}
+head(unifreq)
+head(bifreq)
+head(trifreq)
 ```
 
 We'll later call the "word" columns so we we set them as keys :
