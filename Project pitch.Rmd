@@ -322,7 +322,7 @@ In theory, what we can use what we have to make predictions. If the bigram input
 
 ## Katz' model
 
-Here's the main idea behind Katz' backoff model. Let's say you're fishing and you got 7 trouts, 2 salmons and 1 tuna. For your 11th fish, you could either try to predict only from the caught fish (70% chance of getting a trout, 20% for salmon and 10% for tuna) or you could "eat" a bit of probability for each of the 3 known outcome and use that to make a probability of getting a new fish (69% chance of getting a trout, 18% for salmon, 7% for tuna and 6% chances of getting a new fish). What we did here is that we **smoothed** the probabilities of each observed outcomes to account for a possible unobserved outcome.
+Here's the main idea behind Katz' backoff model. Let's say you're fishing and you got 7 trouts, 2 salmons and 1 tuna. For your 11th fish, you could either try to predict only from the caught fish (70% chance of getting a trout, 20% for salmon and 10% for tuna) or you could "eat" a bit of probability for each of the 3 known outcome and use that to make a probability of getting a new fish (69% chance of getting a trout, 18% for salmon, 7% for tuna and 6% chances of getting a new fish). What we did here is that we **smoothed** the probabilities of each observed outcomes to account for a possible unobserved outcome. **We will refer to these adjusted probabilities as discounted probabilities**.
 
 With this idea in mind, what Katz's does is that it will also look for matching trigrams, but even if there is a match, it will still backoff to the list of observed bigrams to look for possible combinations that would create unobserved trigrams. 
 
@@ -330,7 +330,40 @@ Lets look at the example below : a general backoff model would not find the righ
 
 ![](./data/img/img3.PNG)
 
+However, unobserved trigrams that are produced like that have their "weight" reduced by a coefficient called $\alpha$.
+
+To summarize, the Katz Backoff model gives the following probabilities for a word n°3 ($w_3$) prediction given a bigram input <word n°1, word n°2> ($w_1,w_2$) :
+
+
+
+$$
+P_{katz}(w_3|w_2,w_1) = \begin{cases} P*(w_3|w_2,w_1) ~ ~ for~ w_3,w_2,w_1~ in~ observed~ trigrams \\\\\
+                                \alpha_{w_2,w_1}~P_{katz}(w_3|w_2)~ ~ for~  w_3,w_2~ in~ observed~ bigrams \\\\
+                                \alpha_{w_2}~ P_{katz}(w_3)~ ~ for~ w_3~ not~ in~ observed~ bigrams \end{cases}
+$$
+
+Where $P*$ are the discounted probabilities after a smoothing process.
+
+The $\alpha$ coefficient can be thought of as a "leftover probability" once we "ate" the probabilities during the smoothing process. In our fishing examples, we "ate" 6% of porbabilities to account for an unobserved fish. That is our $\alpha$ coefficient. Therefore, given an $(n-1)gram$ input, its formula is :
+
+$$
+ \frac{C(ngram) - C^*(ngram)}{C(n-1gram)}
+
+$$
+
+Where :
+
+- $C(ngram)$ is the total count of ngrams matching the input. If equal to zero, $\alpha = 1$
+- $C^*(ngram)$ is the total *discounted* count of ngrams matching the input
+- $c(n-1gram)$ in the total count of the $(n-1)gram$ input in our $(n-1)gram$ list
+
+We now have to chose a smoothing method to obtain discounted counts and probabilities. A frequent method used with Katz' backoff model is the Good-Turing method. There are other methods that might be more reliable but this one is quite easy to put into code and compute.
+
 # Good-Turing smoothing
+
+## Frequency of frequency
+
+Good-Turing smoothing discounts an ngrams' count $r$ according to the frequency of its frequency.
 
 Every word has a frequency, for instance, we previously saw that the word "one" appears 47,152 times, and "just" appears 37,521 times.
 These are frequencies, and only one word has a frequency of 47,152, which means that the frequency of the 47,152 frequency is 1.
@@ -341,6 +374,22 @@ On the contrary, there might be many words that appear 10 times. We call that fr
 For instance, $N_{47,152} = 1$, $N_{37,521} = 1$ and $N_{47,000} = 0$
 
 A good way to think about frequency of frequencies is to ask oneself "How many words appear $r$ times in our dataset ?".
+
+## Discounted counts
+
+I won't go into too much details - there are many articles that will explain it much better than me. The formula for the discounted value $r*$ of an $r$ count for a specific ngram is :
+
+$$
+r^* = \frac{
+(r+1)\frac{N_{r+1}}{N_r} - r\frac{(k+1)N_{k+1}}{N_1}
+}{
+1-\frac{(k+1)N_{k+1}}{N_1}
+}
+$$
+
+Where $k$ is the benchmark value for which $r^* = r$ if $r > k$. Empirically, $k$ is set to 5.
+
+When $r$ values get very large (which is our case), most $N_r$ values are equal to zero (which is also our case). When that happens, we replace $N_r$ by an averaged value $Z_r$ that takes the prevalence of zeroes into account. We'll get to that later.
 
 ## Step 1 : Calculating the frequency of frequencies
 
@@ -374,7 +423,7 @@ triNr <- data.table(count = as.integer(names(tritable)), Nr = as.integer(tritabl
 rm(unitable, bitable, tritable)
 ```
 
-## Zr - averaging and smoothing
+## Zr - averaging
 
 The formula for Zr-averaging is $Z_r = \frac{N_r}{0.5(t-q)}$ where $r$ is the current count for which $N_r \neq 0$, $q$ is the previous count and $t$ is the next, and $Z_r$ will be the adjusted value of $N_r$ taking into account the fact that for large values of $r$, most $N_r$ will be equal to zero. 
 
@@ -413,7 +462,7 @@ bifit <- lm(log(Zr) ~ log(count), data = biNr)
 trifit <- lm(log(Zr) ~ log(count), data = triNr)
 ```
 
-With this model, we will smooth our $Z_r$ values that will be used to calculate our dicounted values $r^*$. For high values of $r$, we can assimilate $r^* = r$. For lower values of $r$, the discounted value $r^*$ is :
+Here's a quick reminder of the $r^*$ formula when $1 \le r \le k$ :
 
 $$
 r^* = \frac{
@@ -422,8 +471,6 @@ r^* = \frac{
 1-\frac{(k+1)N_{k+1}}{N_1}
 }
 $$
-
-Where $k$ is the benchmark value for which $r^* = r$ if $r > k$. Empirically, $k$ is set to 5.
 
 We can simplify this equation by writing it in this form :
 
