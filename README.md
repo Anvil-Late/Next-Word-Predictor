@@ -1,2 +1,1068 @@
-# Next-Word-Predictor
-An NLP project to predict the user's next word in a sentence
+---
+title: "Next Word Predictor"
+author: "Anvil"
+date: "24/08/2020"
+output: 
+   html_document:
+      self_contained: false
+      keep_md: true
+---
+
+
+
+# Summary
+
+This document is a pitch explaining how I made [this Web App (click here to see it)](https://anvil.shinyapps.io/NextWordPredictor/).
+
+My goal was to familiarize myself with natural language processing and use it to build a "next word" predictive model such as the ones we have on our smartphones keyboards. For that, I used a database provided by SwiftKey. 
+
+# Loading packages
+
+This project was made on R and uses the following packages  :
+
+
+```r
+library(dplyr)
+library(ggplot2)
+library(quanteda)
+library(data.table)
+library(stringi)
+library(stringr)
+library(knitr) # Md document aesthetics
+library(kableExtra) # Md document aesthetics
+```
+
+
+
+# Loading the data
+
+As a personal habit, I automate the download, unzipping and loading process to make the project reproducible. This chapter will create a "data" folder in your current working directory and download SwiftKey's training dataset there.
+
+
+```r
+if (!file.exists("data")) {
+   dir.create("data")
+}
+urlfile <- "https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"
+filename <- "./data/swiftkey_db.zip"
+
+if (!file.exists(filename)) {
+   download.file(urlfile, filename, method = "curl")
+}
+
+dataset.name <- "final"
+if (!file.exists(dataset.name)) {
+   unzip(filename)
+}
+```
+
+The unzipped folder contains blog, news and twitter text for 4 different languages : english, german, finnish and russian. That's a total of 12 datasets, all collected by a web crawler, and we will only focus on the english ones.
+
+
+```r
+blogcon <- file("./final/en_US/en_US.blogs.txt", "r") 
+blogtext <- readLines(blogcon, encoding = "UTF-8") 
+
+newscon <- file("./final/en_US/en_US.news.txt", "r") 
+newstext <- readLines(newscon, encoding = "UTF-8") 
+
+twitcon <- file("./final/en_US/en_US.twitter.txt", "r") 
+twittext <- readLines(twitcon, encoding = "UTF-8") 
+
+close(blogcon)
+close(newscon)
+close(twitcon)
+```
+
+# A bit of exploratory data analysis and pre-processing
+
+When dealing with our case of text analytics, pre-processing and exploration will be tightly linked. We will often need to do some processing in order to explore the data. 
+
+Moreover, we want as little bias as possible in our model, so we will split our datasets into a training and testing set as soon as possible and do the exploration only on the training set.
+
+## Structure
+
+Now that the text files are open, we might want to take a look at the content, starting at the datasets' sizes :
+
+
+```r
+summarydf <- data.frame(
+   Object = c("Blog dataset", "News dataset", "Twitter dataset"),
+   Nr.of.elements = sapply(list(blogtext, newstext, twittext), length),
+   length.longest.element = c(
+      max(sapply(blogtext, nchar)),
+      max(sapply(newstext, nchar)),
+      max(sapply(twittext, nchar))
+   ),
+   dataset.size = sapply(list(blogtext, newstext, twittext), object.size)
+)
+
+kable(summarydf) %>% kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+<table class="table table-striped table-hover" style="margin-left: auto; margin-right: auto;">
+ <thead>
+  <tr>
+   <th style="text-align:left;"> Object </th>
+   <th style="text-align:right;"> Nr.of.elements </th>
+   <th style="text-align:right;"> length.longest.element </th>
+   <th style="text-align:right;"> dataset.size </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:left;"> Blog dataset </td>
+   <td style="text-align:right;"> 899288 </td>
+   <td style="text-align:right;"> 40833 </td>
+   <td style="text-align:right;"> 267758632 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> News dataset </td>
+   <td style="text-align:right;"> 77259 </td>
+   <td style="text-align:right;"> 5760 </td>
+   <td style="text-align:right;"> 20729472 </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> Twitter dataset </td>
+   <td style="text-align:right;"> 2360148 </td>
+   <td style="text-align:right;"> 140 </td>
+   <td style="text-align:right;"> 334484736 </td>
+  </tr>
+</tbody>
+</table>
+
+We have extremely large datasets, taking a total of more than 600MB of memory. While the twitter datasets only has small entries with a maximum of 140 characters, it has more that 2 millions of them. The blog dataset, on the contrary, has large elements, the biggest one having more than 40 thousand characters, while still having close to a million entries.
+
+Considering the sizes of the datasets, we might not want to use 100% of the available data in our model building. This is good, it means that we can be selective in our filtering and pre-processing and still end up with a large enough database to build an efficient model.
+
+We'll start by building a training set that consists of 80% of each dataset.
+
+
+```r
+set.seed(1234)
+blogtrain <- sample(blogtext, 0.8*length(blogtext))
+
+
+newstrain <- sample(newstext, 0.8*length(newstext)) 
+
+
+twittrain <- sample(twittext, 0.8*length(twittext)) 
+
+
+training <- c(blogtrain, newstrain, twittrain)
+
+# removing obsolete datasets to save some RAM
+rm(blogtext)
+rm(twittext)
+rm(newstext)
+rm(blogtrain)
+rm(newstrain)
+rm(twittrain)
+```
+
+## What's next ?
+
+Now that we have datasets to work on, we'll manipulate them a little. The following steps have one aim : to create a frequency matrix, which displays the frequency with which every word is used. With that, we'll know on what our model can be built on. 
+
+For instance, if we find out that we can cover 90% of texts with only a small subset of words, we can greatly reduce the complexity of our model by having a high accuracy on these words and an average one on the others.
+
+## Tokenization
+
+The first thing we will do with our training set is tokenization : we will split our lines of text into chunks of words. For instance, we want the sentence "This watch is Mike's" to become ["this" "watch" "is" "mike" "s"].
+
+This is where the package quanteda comes in ; it can automate this process with its tokens() function. We will set the following parameters :
+
+- Do not tokenize numbers
+- Do not tokenize punctuation
+- Do not tokenize symbols such as dollar signs or hashtags
+- Do not tokenize URLS
+- Do not tokenize twitter words such as "rt"
+- Split hyphenated words
+
+
+```r
+train_tokens <- tokens(training, what = "word", remove_numbers = T,
+                       remove_punct = T, remove_symbols = T, split_hyphens = T,
+                       remove_url = T, remove_twitter = T)
+```
+
+
+Let's check how that changed one of our lines :
+
+
+```r
+training[1]
+```
+
+```
+## [1] "He looked back at me, his eyes were as dark as coal,"
+```
+
+```r
+train_tokens[[1]]
+```
+
+```
+##  [1] "He"     "looked" "back"   "at"     "me"     "his"    "eyes"   "were"  
+##  [9] "as"     "dark"   "as"     "coal"
+```
+
+
+
+
+Finally, to get the full transformation we wanted, we convert all of the tokens to lower case :
+
+
+```r
+train_tokens <- tokens_tolower(train_tokens)
+```
+
+
+## Token processing
+
+### Stopwords
+
+In every language, some words are here for grammatical purposes and are not the ones that carry the message of the sentence. These words are called stopwords, and their presence can confuse our predictive model, so we'll filter them out.
+
+An example of a stopword in the english language is "the". Here's a sample of the built-in list of stopwords provided by the quanteda package
+
+
+```r
+stopwords(language = "en")[1:10]
+```
+
+```
+##  [1] "i"         "me"        "my"        "myself"    "we"        "our"      
+##  [7] "ours"      "ourselves" "you"       "your"
+```
+
+We'll use that to filter them out in our dataset :
+
+
+```r
+train_tokens <- tokens_select(train_tokens, stopwords(), selection = "remove")
+```
+
+Let's take the first element and see how it has changed now :
+
+
+```r
+train_tokens[[1]]
+```
+
+```
+## [1] "looked" "back"   "eyes"   "dark"   "coal"
+```
+
+### Profanity filtering
+
+We'll get a bit politically correct here, and prevent our model from both taking profanities into account and suggesting them as predictions. Since we use a tweeter database we're bound to encounter some otherwise.
+
+There's a public list of profanities available [here](https://www.frontgatemedia.com/a-list-of-723-bad-words-to-blacklist-and-how-to-use-facebooks-moderation-tool/) for webmasters or moderators to use, and this is what we'll use here to filter them out.
+
+
+```r
+# Getting the list
+profanities <- read.csv(
+   "https://www.frontgatemedia.com/new/wp-content/uploads/2014/03/Terms-to-Block.csv", 
+                        header = F, sep = ",", skip = 4)
+profanities[, 2] <- gsub(pattern = ",", replacement = "", profanities[, 2])
+profanities <- profanities[, 2]
+
+# Filtering
+
+train_tokens <- tokens_select(train_tokens, profanities, selection = "remove")
+```
+
+
+
+
+## Frequency matrix
+
+We can now create our frequency matrix - or document feature matrix (DFM). Since our dataset has had quite some steps of pre-processing, we do not need a lot of parameters when creating it.
+
+
+```r
+unigram <- dfm(train_tokens, tolower = F)
+```
+
+We can now see the most frequent words in our dataset :
+
+
+```r
+unifreq <- textstat_frequency(unigram)
+head(unifreq)
+```
+
+```
+##   feature frequency rank docfreq group
+## 1    just    205040    1  189851   all
+## 2    like    181522    2  162765   all
+## 3     one    173704    3  151129   all
+## 4     can    153875    4  136436   all
+## 5     get    149493    5  137612   all
+## 6    time    137697    6  123557   all
+```
+
+```r
+top50 <- filter(unifreq, rank <= 50)
+qplot(reorder(feature, rank), frequency, data = top50) + 
+   labs(x = "Word", y = "Frequency") + ggtitle("Most frequent words (top 50)") +
+   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+         plot.title = element_text(hjust = 0.5))
+```
+
+![](Project-pitch_files/figure-html/unnamed-chunk-16-1.png)<!-- -->
+
+
+
+
+Now that we saw the top 50 words, let's see a more detailed breakdown of the frequencies in our dataset :
+
+
+```r
+quantile(unifreq$frequency)
+```
+
+```
+##     0%    25%    50%    75%   100% 
+##      1      1      1      4 205040
+```
+
+75% of the words in our dataset appear 6 times or less. 
+
+We'll create a dataset that shows the count of each words in our training corpus, and we set a benchmark of at least 4 total counts. The words below that will be removed, and this will greatly reduce our training set's size :
+
+
+```r
+unifreq <- data.table(word = unifreq$feature, count = unifreq$frequency)
+unifreq <- unifreq[count > 4, ]
+```
+
+
+
+# Building n-grams
+
+Now we have a processed and filtered list of all the words used in our dataset, along with their DFM. However, with that, our predictor will only produce words according to their probability of appearing. What we want is for it to take into account the previous words as well.
+
+What we ultimately want is, basically, to take a 2-word input, which is called a bigram, and check what word to add to create the most likely 3-word (trigram) in our list. The word used to create this trigram will be our predictor. 
+
+For example : the input is "banana milk". In our list of trigrams, the one that matches "banana milk" that appears the most is "banana milk shake". Therefore, the output will be "shake".
+
+In order to do that, a list of 1-word sets (unigrams) is not enough, we need to build a list of 2-grams and 3-grams.
+
+### Building the 2-grams token list 
+
+
+```r
+train_tokens_2G <- tokens_ngrams(train_tokens, n = 2)
+bigram <- dfm(train_tokens_2G, tolower = F)
+```
+
+
+```r
+bifreq <- textstat_frequency(bigram)
+bifreq <- data.table(word = bifreq$feature, count = bifreq$frequency)
+bifreq <- bifreq[count > 4, ]
+```
+
+
+
+### Building the 3-grams token list 
+
+
+```r
+train_tokens_3G <- tokens_ngrams(train_tokens, n = 3)
+trigram <- dfm(train_tokens_3G, tolower = F)
+```
+
+
+```r
+trifreq <- textstat_frequency(trigram)
+trifreq <- data.table(word = trifreq$feature, count = trifreq$frequency)
+trifreq <- trifreq[count > 4, ]
+```
+
+
+
+# Katz' backoff model
+
+## General backoff model
+
+The model we will build is based on Katz' backoff model principle.
+
+In theory, what we can use what we have to make predictions. If the bigram input is found in the trigram list, return the word that makes the most likely trigram. If the bigram input, take only the last word and repeat the process in the bigram list. If there is no match in the bigram list, just select the most frequent word in the unigrams list :
+
+![](./data/img/img1.PNG)
+
+![](./data/img/img2.PNG)
+
+## Katz' model
+
+Here's the main idea behind Katz' backoff model. Let's say you're fishing and you got 7 trouts, 2 salmons and 1 tuna. For your 11th fish, you could either try to predict only from the caught fish (70% chance of getting a trout, 20% for salmon and 10% for tuna) or you could "eat" a bit of probability for each of the 3 known outcome and use that to make a probability of getting a new fish (69% chance of getting a trout, 18% for salmon, 7% for tuna and 6% chances of getting a new fish). What we did here is that we **smoothed** the probabilities of each observed outcomes to account for a possible unobserved outcome. **We will refer to these adjusted probabilities as discounted probabilities**.
+
+With this idea in mind, what Katz's model does is that it will also look for matching trigrams, but even if there is a match, it will still backoff to the list of observed bigrams to look for possible combinations that would create unobserved trigrams. 
+
+Lets look at the example below : a general backoff model would not find the right answer and would simply suggest "shake", whereas Katz' model would suggest the correct answer, "tea".
+
+![](./data/img/img3.PNG)
+
+However, unobserved trigrams that are produced like that have their "weight" reduced by a coefficient called $\alpha$.
+
+To summarize, the Katz Backoff model gives the following probabilities for a word n°3 ($w_3$) prediction given a bigram input <word n°1, word n°2> ($w_1,w_2$) :
+
+
+
+$$
+P_{katz}(w_3|w_2,w_1) = \begin{cases} P*(w_3|w_2,w_1) ~ ~ for~ w_3,w_2,w_1~ in~ observed~ trigrams \\\\\
+                                \alpha_{w_2,w_1}~P_{katz}(w_3|w_2)~ ~ for~  w_3,w_2~ in~ observed~ bigrams \\\\
+                                \alpha_{w_2}~ P_{katz}(w_3)~ ~ for~ w_3~ not~ in~ observed~ bigrams \end{cases}
+$$
+
+Where $P*$ are the discounted probabilities after a smoothing process.
+
+The $\alpha$ coefficient can be thought of as a "leftover probability" once we "ate" the probabilities during the smoothing process. In our fishing examples, we "ate" 6% of porbabilities to account for an unobserved fish. That is our $\alpha$ coefficient. Therefore, given an $(n-1)gram$ input, its formula is :
+
+$$
+ \frac{C(ngram) - C^*(ngram)}{C(n-1gram)}
+$$
+
+Where :
+
+- $C(ngram)$ is the total count of ngrams matching the input. If equal to zero, $\alpha = 1$
+- $C^*(ngram)$ is the total *discounted* count of ngrams matching the input
+- $C(n-1gram)$ in the total count of the $(n-1)gram$ input in our $(n-1)gram$ list
+
+We now have to chose a smoothing method to obtain discounted counts and probabilities. A frequent method used with Katz' backoff model is the Good-Turing method. There are other methods that might be more reliable but this one is quite easy to put into code and compute.
+
+# Good-Turing smoothing
+
+## Frequency of frequency
+
+Good-Turing smoothing discounts an ngrams' count $r$ according to the frequency of its frequency.
+
+Every word has a frequency, for instance, we previously saw that the word "just" appears 205040 times, and "like" appears 181522 times.
+These are frequencies, and only one word has a frequency of 205040, which means that the frequency of the 47,152 frequency is 1.
+Similarly, the 181522 frequency has a frequency of 1. Since there are no words that appear exactly 47,000 times, the associated frequecy of frequency is 0.
+
+On the contrary, there might be many words that appear 10 times. We call that frequency of frequencies $N_r$ where $r$ is a word count.
+
+For instance, $N_{205,040} = 1$, $N_{181,522} = 1$ and $N_{47,000} = 0$
+
+A good way to think about frequency of frequencies is to ask oneself "How many words appear $r$ times in our dataset ?".
+
+## Discounted counts
+
+I won't go into too much details - there are many articles that will explain it much better than me. The formula for the discounted value $r*$ of an $r$ count for a specific ngram is :
+
+$$
+r^* = \frac{
+(r+1)\frac{N_{r+1}}{N_r} - r\frac{(k+1)N_{k+1}}{N_1}
+}{
+1-\frac{(k+1)N_{k+1}}{N_1}
+}
+$$
+
+Where $k$ is the benchmark value for which $r^* = r$ if $r > k$. Empirically, $k$ is set to 5.
+
+When $r$ values get very large (which is our case), most $N_r$ values are equal to zero (which is also our case). When that happens, we replace $N_r$ by an averaged value $Z_r$ that takes the prevalence of zeroes into account. We'll get to that later.
+
+## Step 1 : Calculating the frequency of frequencies
+
+
+We'll create a table to see the frequencies of frequencies for unigrams :
+
+
+```r
+unitable <- table(unifreq[,.(count)])
+head(unitable)
+```
+
+```
+## 
+##     5     6     7     8     9    10 
+## 11843  8798  6818  5509  4536  3742
+```
+We then store these results in a data table, where "count" will be a frequency and "Nr" will be the frequency of that frequency :
+
+
+```r
+uniNr <- data.table(
+   count = as.integer(names(unitable)),
+   Nr = as.integer(unitable)
+)
+```
+
+We do the same for bigrams and trigrams :
+
+
+```r
+bitable <- table(bifreq[,.(count)])
+biNr <- data.table(count = as.integer(names(bitable)), Nr = as.integer(bitable))
+
+tritable <- table(trifreq[,.(count)])
+triNr <- data.table(count = as.integer(names(tritable)), Nr = as.integer(tritable))
+```
+
+
+
+## Zr - averaging
+
+The formula for Zr-averaging is $Z_r = \frac{N_r}{0.5(t-q)}$ where $r$ is the current count for which $N_r \neq 0$, $q$ is the previous count and $t$ is the next, and $Z_r$ will be the adjusted value of $N_r$ taking into account the fact that for large values of $r$, most $N_r$ will be equal to zero. 
+
+We'll create a function that adds a $Z_r$ column to our Nr datasets, with the following conditions :
+
+- When $r$ is the lowest count, $q=0$
+- When $r$ is the highest count, $t = 2r-q$ so that $0.5(t-q)=r-q$
+
+
+```r
+add_zr <- function(df){
+   n <- dim(df)[1]
+   
+   ## Special cases when r is lowest count or highest count
+   df[1, Zr := Nr / (0.5 * df[2, count])]
+   df[n, Zr := Nr / (count - df[n-1, count])]
+   
+   ## General case :
+   r <- 2:(n-1)
+   df[r, Zr := Nr / (0.5 * (df[r+1, count] - df[r-1, count]))]
+}
+```
+
+We now apply it to our Nr datasets :
+
+
+```r
+add_zr(uniNr)
+add_zr(biNr)
+add_zr(triNr)
+```
+
+To discount $r$ into $r^*$ with Goog-Turing smoothing, we need to fit a linear model with $log(Z_r)$ as outcome and $log(r)$ as regressor
+
+
+```r
+unifit <- lm(log(Zr) ~ log(count), data = uniNr)
+bifit <- lm(log(Zr) ~ log(count), data = biNr)
+trifit <- lm(log(Zr) ~ log(count), data = triNr)
+```
+
+Here's a quick reminder of the $r^*$ formula when $1 \le r \le k$ :
+
+$$
+r^* = \frac{
+(r+1)\frac{N_{r+1}}{N_r} - r\frac{(k+1)N_{k+1}}{N_1}
+}{
+1-\frac{(k+1)N_{k+1}}{N_1}
+}
+$$
+
+We can simplify this equation by writing it in this form :
+
+$$
+r^* = \frac{
+(r+1)\frac{N_{r+1}}{N_r} - r \times S
+}{
+1-S
+}
+$$
+
+Where $S = \frac{(k+1)N_{k+1}}{N_1}$
+
+Of course, in our case, all $N_r$ values will be replaced by $Z_r$ estimated with the appropriate model fit :
+
+
+```r
+k=5 # Benchmark 
+
+
+calc_disc <- function(r, gram) {
+  if (gram==1) {
+    modelfit <- unifit
+  } else if (gram==2) {
+    modelfit <- bifit
+  } else if (gram==3) {
+    modelfit <- trifit
+  }
+  # Values N1, Nr, Nk+1 in the fraction
+  Z_1 <- exp(predict(modelfit, newdata=data.frame(count = 1)))
+  Z_r <- exp(predict(modelfit, newdata=data.frame(count = r)))
+  Z_r_plus <- exp(predict(modelfit, newdata=data.frame(count = (r+1))))
+  Z_k_plus <- exp(predict(modelfit, newdata=data.frame(count = (k+1))))
+  
+  # Calculate S
+  S <- ((k+1)*Z_k_plus)/(Z_1)
+  
+  # Calculate r*
+  adj_r <- ((r+1)*(Z_r_plus)/(Z_r)-r*S)/(1-S)
+  return(adj_r)
+}
+
+adjust_count <- function(ngram_freq, gram) {
+  ngram_freq[count > k, adj_count := as.numeric(count)] # if r > k, r* = r
+  ngram_freq[count <= k, adj_count := calc_disc(count, gram)] # if r >= k, 
+                                                              # we calculate
+}
+unifreq <- data.table(unifreq)
+adjust_count(unifreq, 1)
+adjust_count(bifreq, 2)
+adjust_count(trifreq, 3)
+```
+
+
+```r
+tail(unifreq)
+```
+
+```
+##                      word count adj_count
+## 1: #10thingsihateaboutyou     5  4.174838
+## 2:                  #toys     5  4.174838
+## 3:                kapanke     5  4.174838
+## 4:                  2for1     5  4.174838
+## 5:           #tyrantaylor     5  4.174838
+## 6:                 rumsey     5  4.174838
+```
+
+```r
+tail(bifreq)
+```
+
+```
+##          word count adj_count
+## 1:  fake_punt     5  3.744449
+## 2: shaken_bit     5  3.744449
+## 3:    nyr_nyr     5  3.744449
+## 4:  bust_bust     5  3.744449
+## 5: kick_sleds     5  3.744449
+## 6: frank_dodd     5  3.744449
+```
+
+```r
+tail(trifreq)
+```
+
+```
+##                             word count adj_count
+## 1:                read_need_read     5  3.521572
+## 2:              cold_grey_stones     5  3.521572
+## 3: guilty_conspiracy_trafficking     5  3.521572
+## 4:           italy_caprera_hotel     5  3.521572
+## 5:                 sher_e_punjab     5  3.521572
+## 6:              bad_copy_editing     5  3.521572
+```
+
+We'll later call the "word" columns so we we set them as keys :
+
+
+```r
+setkey(unifreq, word)
+setkey(bifreq, word)
+setkey(trifreq, word)
+```
+
+
+# Building the prediction function
+
+Given a bigram input, such as "fat burning", our function will function like this :
+
+
+- If the bigram is found in our list :
+   
+   1. Retrieve all observed trigrams in our list matching this bigram such as "fat burning workout" or "fat burning food". From them, deduce the probability of the next word being "workout", "food", or any other in our trigram list according to the frequency of each pattern
+   
+   2. Calculate the probability of the next word being one that doesnt match our trigram list.
+   
+   3. Retrieve all observed bigrams in our list matching the last word of the input such as "burning food", "burning wood" or even "Burning Man" (the festival, please don't get strange ideas). Take only the bigrams that are included in the unobserved trigrams from point n°2. From them, estimate the next word and the Katz numerator $\alpha$.
+   
+   4. Retrieve unigrams that would create unobserved bigram when put with "burning" that would be included in the unobserved trigrams from point n°2
+   
+- If the bigram input is not found in our list :
+
+   5. If the last word ("burning") is in our list :
+      
+      * Find all observed bigrams using "burning" in our list and estimate the next word and the Katz numerator $\alpha$
+      * Retrieve words that would make bigrams that are not in our list and estimate the next word from maximum likelihood
+   
+   6. If the last word is not in our list, estimate the next word from maximum likelihood
+   
+
+We therefore need 2 primary retrieving functions :
+
+One that retrieves all of the N grams in our list given an N-1 gram input :
+
+
+```r
+ngram_inlist_getter <- function(wordinput, ngram_freq){
+   process_word <- sprintf("%s%s%s", "^", wordinput, "_")
+   # this transforms "word_input" into "^word_input_" so we can use it in grep
+   ngram_freq[grep(pattern = process_word,
+                   ngram_freq[, word],
+                   perl = T,
+                   useBytes = T)]
+}
+```
+
+One that retrieves all the unigrams in our list that would make N grams that are not in our list :
+
+
+```r
+ngram_out_unigetter <- function(inlist_ngrams, N){
+   unigrams_in_inlist_ngrams <- str_split_fixed(inlist_ngrams[, word], "_", N)[, N]
+   # This gets all the unigrams that are the last words in our ngram list
+   # If we remove them from our unigram list, we only end up with unigrams that
+   # would constitute new ngrams
+   return(data.table(
+      word = unifreq[!unigrams_in_inlist_ngrams, word, on = "word"]
+      ))
+}
+```
+
+# Computing
+
+The first thing we compute is the probabilities of all the N grams in our list given the provided n-1 gram :
+
+
+```r
+inlist_prob <- function(ngram_inlist, n_minus_gram, wordinput){
+   # ngram_inlist : the list given by ngram_inlist_getter()
+   # n_minus_gram : the N-1 Grams list
+   # wordinput : the provided n-1 gram
+   pattern_count <- n_minus_gram[wordinput, count, on=.(word)]
+   ngram_inlist[, prob := ngram_inlist[, adj_count] / pattern_count]
+}
+```
+
+We also need to compute the Katz numerator $\alpha$ :
+
+
+```r
+alpha_numerator <- function(ngram_inlist, n_minus_gram, wordinput){
+   if (dim(ngram_inlist)[1] == 0){
+      return(1)
+   } else {
+      return(
+         sum(ngram_inlist[, count - adj_count] / n_minus_gram[wordinput, count, on = .(word)]))
+   }
+}
+```
+
+We now combine all these functions in a next word getter that takes a processed input and predicts the next word :
+
+
+```r
+nextword_getter <- function(userinput, noresult = 3){
+   userinput <- gsub(" ", "_", userinput)
+   
+   if (length(which(bifreq$word == userinput)) > 0){ # if bigram found in our list
+      # retrieve trigrams in our list that match the input :
+      
+      trigram_inlist <- ngram_inlist_getter(userinput, trifreq)
+      userinput_word2 <- str_split_fixed(userinput, "_", 2)[, 2]
+      # retrieve bigrams in our list that match the last word of the input
+      bigram_inlist <- ngram_inlist_getter(userinput_word2, bifreq)
+      # retrieve all unigrams that would constitute unobserved bigrams
+      big_out_uni <- ngram_out_unigetter(bigram_inlist, 2)
+      # Exclude bigrams in list that are in trigrams in list (no redudancy)
+      bigram_inlist <- bigram_inlist[
+         !str_split_fixed(trigram_inlist[, word], "_", 2)[, 2], on = "word"
+         ]
+      # calculate probabilities of trigrams in list
+      trigram_inlist <- inlist_prob(trigram_inlist, bifreq, userinput)
+      # Calculate Katz alpha numerator for the bigram input
+      input_alpha <- alpha_numerator(trigram_inlist, bifreq, userinput)
+      # Calculate probabilities of bigrams in list
+      bigram_inlist <- inlist_prob(bigram_inlist, unifreq, userinput_word2)
+      # Calculate Katz alpha numerator for last word of input
+      input_word2_alpha <- alpha_numerator(bigram_inlist, unifreq, userinput_word2)
+      # Calculate maximum likelihood for unigrams in bigrams not in list 
+      big_out_uni[, prob := unifreq[big_out_uni, count, on = .(word)] / 
+                     unifreq[big_out_uni, sum(count), on = .(word)]
+                  ]
+      big_out_uni[, prob := input_alpha * input_word2_alpha * prob]
+      
+      # only keep "word" and "prob" columns in trigram_inlist and bigram_inlist
+      # and process the words in a readable manner
+      
+      trigram_inlist[, c("count", "adj_count") := NULL]
+      trigram_inlist[, word := str_remove(trigram_inlist[, word], "([^_]+_)+")]
+      
+      bigram_inlist[, c("count", "adj_count") := NULL]
+      bigram_inlist[, word := str_remove(bigram_inlist[, word], "([^_]+_)+")]
+      
+      # multiply bigram_inlist probabilities by alpha 
+      bigram_inlist[, prob := input_alpha * prob]
+      
+      # Combine all probabilities in order into a single data table
+      all_probs <- setorder(rbind(trigram_inlist, bigram_inlist, big_out_uni), -prob)
+      
+      # return list of results, only the top ones according to the noresult input,
+      # 3 by default. 
+      # If less than the demanded amount results, print as many results as there are
+      # (dim(all_probs)[1])
+      return(all_probs[prob != 0][1:min(dim(all_probs[prob != 0])[1], noresult)])
+   } else { # if bigram input not in list
+      userinput_word2 <- str_split_fixed(userinput, "_", 2)[2]
+      
+      if (length(which(unifreq$word == userinput_word2)) >0){# if last word found
+                                                             # in unigram list
+         
+         # retrieve all bigrams in list beginning with last word of input
+         bigram_inlist <- ngram_inlist_getter(userinput_word2, bifreq)
+         # Calculate probabilities of bigrams in list
+         bigram_inlist <- inlist_prob(bigram_inlist, unifreq, userinput_word2)
+         # Calculate alpha
+         input_word2_alpha <- alpha_numerator(bigram_inlist, unifreq, userinput_word2)
+         
+         # retrieve all unigrams that would constitute new bigrams :
+         big_out_uni <- ngram_out_unigetter(bigram_inlist, 2)
+         # calculate maximum likelihood for unigrams in bigrams not in list :
+         big_out_uni[, prob := unifreq[big_out_uni, count, on = .(word)] / 
+                        unifreq[big_out_uni, sum(count), on = .(word)]
+                     ]
+         big_out_uni[, prob := input_word2_alpha * prob]
+         
+         # only keep "word" and "prob" columns in bigram_inlist
+         # and process the words in a readable manner
+         bigram_inlist[, c("count", "adj_count") := NULL]
+         bigram_inlist[, word := str_remove(bigram_inlist[, word], "([^_]+_)+")]
+         
+         all_probs <- setorder(rbind(bigram_inlist, big_out_uni), -prob)
+         return(all_probs[prob != 0][1:noresult])
+         
+         
+      } else { # if last word not found in unigram list
+         # We call the maximum likelihood
+         return(setorder(unifreq, -adj_count)[1:noresult, .(word, 
+                                                            prob = adj_count / 
+                                                               unifreq[, sum(count)])])
+      }
+   }
+}
+```
+
+We have our next word predictor. 
+Our actual prediction function will call it but will have one small step before : it will preprocess the input the same way we preprocessed our train datasets.
+
+
+```r
+nextword_preproc <- function(wordinput){
+   names(wordinput) <- NULL
+   processed_input <- tokens(wordinput, remove_numbers = T,
+                       remove_punct = T, remove_symbols = T, split_hyphens = T,
+                       remove_url = T, remove_twitter = T)
+   processed_input <- tokens_select(processed_input, stopwords(), selection = "remove")
+   processed_input <- tokens_select(processed_input, profanities, selection = "remove")
+   processed_input <- tokens_tolower(processed_input)
+   
+   return(paste(tail(processed_input[[1]], 2), collapse = "_"))
+   
+}
+
+nextword <- function(userinput, noresult=5){
+   userinput_bigram <- nextword_preproc(userinput)
+   answer <- nextword_getter(userinput_bigram, noresult = noresult)
+   if (dim(answer)[1] == 0){
+      return("no prediction found")
+   }
+   return(answer)
+}
+```
+
+And now we test :
+
+
+```r
+nextword("I live in new york")
+```
+
+```
+##     word       prob
+## 1:  city 0.14548304
+## 2: times 0.08848675
+## 3:   n.y 0.03590767
+## 4: state 0.02066116
+## 5:   new 0.01353662
+```
+
+```r
+system.time(nextword("I live in new york"))
+```
+
+```
+##    user  system elapsed 
+##    0.48    0.02    0.47
+```
+
+
+```r
+nextword("make sure to eat fruits and")
+```
+
+```
+##       word prob
+## 1: veggies  0.5
+```
+
+```r
+system.time(nextword("make sure to eat fruits and"))
+```
+
+```
+##    user  system elapsed 
+##    0.44    0.01    0.45
+```
+Our predictor seems to work fine on easy examples, and the computation time is fast. 
+
+To push the testing a bit further, we were provided the following test set, with several sentences and their ending, to which we added our model's predictions :
+
+
+
+
+
+<table class="table table-striped table-hover" style="margin-left: auto; margin-right: auto;">
+ <thead>
+  <tr>
+   <th style="text-align:left;"> sentence </th>
+   <th style="text-align:left;"> answers </th>
+   <th style="text-align:left;"> predictions </th>
+  </tr>
+ </thead>
+<tbody>
+  <tr>
+   <td style="text-align:left;"> The guy in front of me just bought a pound of bacon, a bouquet, and a case of </td>
+   <td style="text-align:left;"> beer </td>
+   <td style="text-align:left;"> wondering, point    , study    , missed   , scenario </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> You're the reason why I smile everyday. Can you follow me please? It would mean the </td>
+   <td style="text-align:left;"> world </td>
+   <td style="text-align:left;"> much  , world , alot  , really, like </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> Hey sunshine, can you follow me and make me the </td>
+   <td style="text-align:left;"> happiest </td>
+   <td style="text-align:left;"> day   , happy , dream , sure  , dreams </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> Very early observations on the Bills game: Offense still struggling but the </td>
+   <td style="text-align:left;"> defense </td>
+   <td style="text-align:left;"> find, get , make, keep, bit </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> Go on a romantic date at the </td>
+   <td style="text-align:left;"> beach </td>
+   <td style="text-align:left;"> night, time , may  , set  , april </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> Well I'm pretty sure my granny has some old bagpipes in her garage I'll dust them off and be on my </td>
+   <td style="text-align:left;"> way </td>
+   <td style="text-align:left;"> bunnies, jacket , dirt   , settles, dust </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> Ohhhhh #PointBreak is on tomorrow. Love that film and haven't seen it in quite some </td>
+   <td style="text-align:left;"> time </td>
+   <td style="text-align:left;"> bit , sure, well, like, time </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> After the ice bucket challenge Louis will push his long wet hair out of his eyes with his little </td>
+   <td style="text-align:left;"> fingers </td>
+   <td style="text-align:left;"> bit   , girl  , time  , boy   , things </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> Be grateful for the good times and keep the faith during the </td>
+   <td style="text-align:left;"> bad </td>
+   <td style="text-align:left;"> keep , god  , based, hope , can </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> If this isn't the cutest thing you've ever seen, then you must be </td>
+   <td style="text-align:left;"> insane </td>
+   <td style="text-align:left;"> say  , go   , see  , admit, get </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> When you breathe, I want to be the air for you. I'll be there for you, I'd live and I'd </td>
+   <td style="text-align:left;"> die </td>
+   <td style="text-align:left;"> life    , music   , without , tweeting, like </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> Guy at my table's wife got up to go to the bathroom and I asked about dessert and he started telling me about his </td>
+   <td style="text-align:left;"> marital </td>
+   <td style="text-align:left;"> us     , people , story  , truth  , stories </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> I'd give anything to see arctic monkeys this </td>
+   <td style="text-align:left;"> weekend </td>
+   <td style="text-align:left;"> temple , tonight, apes   , just   , like </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> Talking to your mom has the same effect as a hug and helps reduce your </td>
+   <td style="text-align:left;"> stress </td>
+   <td style="text-align:left;"> heat  , risk  , amount, number, stress </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> When you were in Holland you were like 1 inch away from me but you hadn't time to take a </td>
+   <td style="text-align:left;"> picture </td>
+   <td style="text-align:left;"> break , care  , look  , nap   , action </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> I'd just like all of these questions answered, a presentation of evidence, and a jury to settle the </td>
+   <td style="text-align:left;"> matter </td>
+   <td style="text-align:left;"> less    , anything, just    , one     , get </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> I can't deal with unsymetrical things. I can't even hold an uneven number of bags of groceries in each </td>
+   <td style="text-align:left;"> hand </td>
+   <td style="text-align:left;"> car   , bought, house , just  , like </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> Every inch of you is perfect from the bottom to the </td>
+   <td style="text-align:left;"> top </td>
+   <td style="text-align:left;"> line , post , right, pan  , page </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> I'm thankful my childhood was filled with imagination and bruises from playing </td>
+   <td style="text-align:left;"> outside </td>
+   <td style="text-align:left;"> game   , around , tonight, games  , music </td>
+  </tr>
+  <tr>
+   <td style="text-align:left;"> I like how the same people are in almost all of Adam Sandler's </td>
+   <td style="text-align:left;"> movies </td>
+   <td style="text-align:left;"> just, like, one , can , get </td>
+  </tr>
+</tbody>
+</table>
+
+Now we see that our predictor is a bit off. Some examples have a majority of stopwords that actually have meaning put together such as "be on my way". For those, it might be a good idea to have a second training set entirely built on the user's history which does not filter out stop words. 
+
+In addition, we stopped our training set building at trigrams, which are not enough for predictions in sentences in which part of the message is carried along longer distances, for instance in the 9th example where "faith" at the end is linked to "good" which is in the beginning. For that, we would either need to train our model on higher orders of n-grams or switch to a different kind of predictor instead of the Katz Backoff.
+
+What could easily be done is to enlarge and diversify the training set. Even if the computing processes require large amount of RAM, which is why I limited myself to 80% samples, in the end the prediction function only requires our 3 frequency tables, which only amount to a total of around 80MB :
+
+
+```r
+object.size(unifreq)
+```
+
+```
+## 9127400 bytes
+```
+
+```r
+object.size(bifreq)
+```
+
+```
+## 63489464 bytes
+```
+
+```r
+object.size(trifreq)
+```
+
+```
+## 11343456 bytes
+```
+
+It is entirely possible to use a larger and more complete training set, and still get, as we can see, a fast predictor with low memory requirements.
+
