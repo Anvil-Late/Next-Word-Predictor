@@ -218,6 +218,18 @@ shinyServer(function(input, output) {
     output$predictedword3 <- renderText({prediction3()})
     output$predictedword4 <- renderText({prediction4()})
     output$predictedword5 <- renderText({prediction5()})
+    
+    uicodeurl <- a("Github link to UI code", 
+                   href="https://github.com/Anvil-Late/Next-Word-Predictor/blob/master/NextWordPredictor/ui.R")
+    servercodeurl <- a("Github link to Server and computation code",
+                       href="https://github.com/Anvil-Late/Next-Word-Predictor/blob/master/NextWordPredictor/server.R")
+    output$uicodelink <- renderUI({
+        tagList("", uicodeurl)
+    })
+    output$servercodelink <- renderUI({
+        tagList("", servercodeurl)
+    })
+    
 
 })
 
