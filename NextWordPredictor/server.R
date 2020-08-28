@@ -223,11 +223,17 @@ shinyServer(function(input, output) {
                    href="https://github.com/Anvil-Late/Next-Word-Predictor/blob/master/NextWordPredictor/ui.R")
     servercodeurl <- a("Github link to Server and computation code",
                        href="https://github.com/Anvil-Late/Next-Word-Predictor/blob/master/NextWordPredictor/server.R")
+    pitchurl <- a("Predictor building process",
+                  href="https://rpubs.com/Anvil/NWP")
+    
     output$uicodelink <- renderUI({
         tagList("", uicodeurl)
     })
     output$servercodelink <- renderUI({
         tagList("", servercodeurl)
+    })
+    output$pitchlink <- renderUI({
+        tagList("", pitchurl)
     })
     
 
