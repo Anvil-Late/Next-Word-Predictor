@@ -2,7 +2,10 @@
 title: "Next Word Predictor"
 author: "Anvil"
 date: "24/08/2020"
-output: html_document
+output: 
+   html_document:
+      self_contained: false
+      keep_md: true
 ---
 
 ```{r setup, include=FALSE}
@@ -366,13 +369,13 @@ We now have to chose a smoothing method to obtain discounted counts and probabil
 
 Good-Turing smoothing discounts an ngrams' count $r$ according to the frequency of its frequency.
 
-Every word has a frequency, for instance, we previously saw that the word "one" appears 47,152 times, and "just" appears 37,521 times.
-These are frequencies, and only one word has a frequency of 47,152, which means that the frequency of the 47,152 frequency is 1.
-Similarly, the 37,521 frequency has a frequency of 1. Since there are no words that appear exactly 47,000 times, the associated frequecy of frequency is 0.
+Every word has a frequency, for instance, we previously saw that the word "just" appears `r as.character(unifreq[word == "just", count])` times, and "like" appears `r as.character(unifreq[word == "like", count])` times.
+These are frequencies, and only one word has a frequency of `r as.character(unifreq[word == "just", count])`, which means that the frequency of the 47,152 frequency is 1.
+Similarly, the `r as.character(unifreq[word == "like", count])` frequency has a frequency of 1. Since there are no words that appear exactly 47,000 times, the associated frequecy of frequency is 0.
 
 On the contrary, there might be many words that appear 10 times. We call that frequency of frequencies $N_r$ where $r$ is a word count.
 
-For instance, $N_{47,152} = 1$, $N_{37,521} = 1$ and $N_{47,000} = 0$
+For instance, $N_{205,040} = 1$, $N_{181,522} = 1$ and $N_{47,000} = 0$
 
 A good way to think about frequency of frequencies is to ask oneself "How many words appear $r$ times in our dataset ?".
 
