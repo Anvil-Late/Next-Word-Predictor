@@ -2,10 +2,6 @@
 title: "Next Word Predictor"
 author: "Anvil"
 date: "24/08/2020"
-output: 
-   html_document:
-      self_contained: false
-      keep_md: true
 ---
 
 
