@@ -25,9 +25,9 @@ shinyUI(fluidPage(
                                  textOutput("predictedword3"),
                                  textOutput("predictedword4"),
                                  textOutput("predictedword5")),
-                        tabPanel("UI Code",
+                        tabPanel("UI Code", br(),
                                  uiOutput("uicodelink")),
-                        tabPanel("Server & computation code",
+                        tabPanel("Server & computation code", br(),
                                  uiOutput("servercodelink"))
                             
                         )
