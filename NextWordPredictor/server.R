@@ -213,15 +213,6 @@ shinyServer(function(input, output) {
         }
     })
     
-    #prediction2 <- reactive({as.character(predictions()[2,1])})
-    #prediction3 <- reactive({as.character(predictions()[3,1])})
-    #prediction4 <- reactive({as.character(predictions()[4,1])})
-    #prediction5 <- reactive({as.character(predictions()[5,1])})  
-
-    
-    
-    
-    
     output$predictedword1 <- renderText({prediction1()})
     output$predictedword2 <- renderText({prediction2()})
     output$predictedword3 <- renderText({prediction3()})
