@@ -9,7 +9,7 @@
 
 library(shiny)
 
-# Define server logic required to draw a histogram
+
 shinyServer(function(input, output) {
     
     Sys.setenv(LANG = "en")
