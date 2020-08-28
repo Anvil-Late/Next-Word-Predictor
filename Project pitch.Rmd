@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
 
 # Summary
 
-This document is a pitch explaining how I made [this Web App](https://anvil.shinyapps.io/NextWordPredictor/).
+This document is a pitch explaining how I made [this Web App (click here to see it)](https://anvil.shinyapps.io/NextWordPredictor/).
 
 My goal was to familiarize myself with natural language processing and use it to build a "next word" predictive model such as the ones we have on our smartphones keyboards. For that, I used a database provided by SwiftKey. 
 
