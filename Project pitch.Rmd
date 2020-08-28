@@ -11,11 +11,13 @@ knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
 
 # Summary
 
-This project will use machine learning and natural language processing to build a "next word" predictive model such as the ones we have on our smartphones keyboards. For that, we use a database provided by SwiftKey. Our whole research will be made on R.
+This document is a pitch explaining how I made [this Web App](https://anvil.shinyapps.io/NextWordPredictor/).
+
+My goal was to familiarize myself with natural language processing and use it to build a "next word" predictive model such as the ones we have on our smartphones keyboards. For that, I used a database provided by SwiftKey. 
 
 # Loading packages
 
-This project will use the following packages ; if you want to reproduce this research, make sure to download them :
+This project was made on R and uses the following packages  :
 
 ```{r}
 library(dplyr)
@@ -324,7 +326,7 @@ In theory, what we can use what we have to make predictions. If the bigram input
 
 Here's the main idea behind Katz' backoff model. Let's say you're fishing and you got 7 trouts, 2 salmons and 1 tuna. For your 11th fish, you could either try to predict only from the caught fish (70% chance of getting a trout, 20% for salmon and 10% for tuna) or you could "eat" a bit of probability for each of the 3 known outcome and use that to make a probability of getting a new fish (69% chance of getting a trout, 18% for salmon, 7% for tuna and 6% chances of getting a new fish). What we did here is that we **smoothed** the probabilities of each observed outcomes to account for a possible unobserved outcome. **We will refer to these adjusted probabilities as discounted probabilities**.
 
-With this idea in mind, what Katz's does is that it will also look for matching trigrams, but even if there is a match, it will still backoff to the list of observed bigrams to look for possible combinations that would create unobserved trigrams. 
+With this idea in mind, what Katz's model does is that it will also look for matching trigrams, but even if there is a match, it will still backoff to the list of observed bigrams to look for possible combinations that would create unobserved trigrams. 
 
 Lets look at the example below : a general backoff model would not find the right answer and would simply suggest "shake", whereas Katz' model would suggest the correct answer, "tea".
 
@@ -525,9 +527,9 @@ adjust_count(trifreq, 3)
 ```
 
 ```{r}
-head(unifreq)
-head(bifreq)
-head(trifreq)
+tail(unifreq)
+tail(bifreq)
+tail(trifreq)
 ```
 
 We'll later call the "word" columns so we we set them as keys :
