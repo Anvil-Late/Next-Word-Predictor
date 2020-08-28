@@ -26,9 +26,9 @@ shinyUI(fluidPage(
                                  textOutput("predictedword4"),
                                  textOutput("predictedword5")),
                         tabPanel("UI Code",
-                                 img(src="uicode.png", align = "right")),
+                                 img(src="uicode.png", align = "left")),
                         tabPanel("Server & computation code",
-                                 img(src="servercode.png", align = "right"))
+                                 img(src="servercode.png", align = "left"))
                             
                         )
             
